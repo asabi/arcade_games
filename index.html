@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Retro Arcade Collection</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+    
+    :root {
+      --bg-dark: #0a0a0a;
+      --bg-darker: #050505;
+      --neon-cyan: #00ffff;
+      --neon-pink: #ff00ff;
+      --neon-green: #00ff41;
+      --neon-orange: #ff6600;
+      --neon-purple: #8a2be2;
+      --neon-yellow: #ffff00;
+      --text-light: #e6f1ff;
+      --text-muted: #8892b0;
+      --card-bg: rgba(20, 20, 30, 0.9);
+      --border-glow: rgba(0, 255, 255, 0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      font-family: 'Orbitron', monospace;
+      overflow: hidden;
+    }
+
+    .stars-bg {
+      position: fixed;
+      inset: 0;
+      background: 
+        radial-gradient(2px 2px at 20px 30px, #fff, transparent),
+        radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
+        radial-gradient(1px 1px at 90px 40px, #fff, transparent),
+        radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.6), transparent),
+        radial-gradient(2px 2px at 160px 30px, #fff, transparent);
+      background-repeat: repeat;
+      background-size: 200px 100px;
+      animation: twinkle 20s infinite linear;
+      opacity: 0.6;
+    }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 0.9; }
+    }
+
+    .container {
+      position: relative;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1;
+    }
+
+    .main-title {
+      font-size: clamp(2rem, 8vw, 6rem);
+      font-weight: 900;
+      text-align: center;
+      margin-bottom: 1rem;
+      background: linear-gradient(45deg, var(--neon-cyan), var(--neon-pink), var(--neon-green));
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradient-shift 3s ease-in-out infinite;
+      text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+    }
+
+    @keyframes gradient-shift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .subtitle {
+      font-size: clamp(0.8rem, 2vw, 1.2rem);
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 3rem;
+      letter-spacing: 2px;
+    }
+
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      width: 100%;
+      margin-bottom: 2rem;
+    }
+
+    .game-category {
+      background: var(--card-bg);
+      border: 2px solid transparent;
+      border-radius: 15px;
+      padding: 25px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+
+    .game-category::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 15px;
+      padding: 2px;
+      background: linear-gradient(45deg, var(--neon-cyan), var(--neon-pink), var(--neon-green), var(--neon-orange));
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask-composite: xor;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .game-category:hover::before {
+      opacity: 1;
+    }
+
+    .game-category:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 20px 40px rgba(0, 255, 255, 0.2);
+    }
+
+    .category-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 15px;
+      color: var(--neon-cyan);
+    }
+
+    .category-desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .games-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .game-btn {
+      background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(255, 0, 255, 0.1));
+      border: 1px solid rgba(0, 255, 255, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text-light);
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .game-btn:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(255, 0, 255, 0.2));
+      border-color: var(--neon-cyan);
+      transform: translateX(5px);
+      box-shadow: 0 5px 15px rgba(0, 255, 255, 0.3);
+    }
+
+    .game-btn::before {
+      content: '';
+      position: absolute;
+      left: -100%;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+      transition: left 0.5s ease;
+    }
+
+    .game-btn:hover::before {
+      left: 100%;
+    }
+
+    .game-title {
+      font-size: 1rem;
+    }
+
+    .game-players {
+      font-size: 0.8rem;
+      color: var(--neon-green);
+      opacity: 0.8;
+    }
+
+    .controls-info {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px 20px;
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .retro { --accent: var(--neon-green); }
+    .classic { --accent: var(--neon-yellow); }
+    .action { --accent: var(--neon-orange); }
+    .strategy { --accent: var(--neon-purple); }
+
+    .retro .category-title { color: var(--neon-green); }
+    .classic .category-title { color: var(--neon-yellow); }
+    .action .category-title { color: var(--neon-orange); }
+    .strategy .category-title { color: var(--neon-purple); }
+
+    /* Floating particles */
+    .particles {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .particle {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      background: var(--neon-cyan);
+      border-radius: 50%;
+      opacity: 0.6;
+      animation: float 15s infinite linear;
+    }
+
+    @keyframes float {
+      0% {
+        transform: translateY(100vh) rotate(0deg);
+        opacity: 0;
+      }
+      10% {
+        opacity: 0.6;
+      }
+      90% {
+        opacity: 0.6;
+      }
+      100% {
+        transform: translateY(-100px) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+      .games-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+      }
+      
+      .main-title {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+      }
+      
+      .subtitle {
+        margin-bottom: 2rem;
+      }
+      
+      .game-category {
+        padding: 20px;
+      }
+    }
+
+    /* Loading animation for when games are starting */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(0, 255, 255, 0.3);
+      border-top: 3px solid var(--neon-cyan);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars-bg"></div>
+  <div class="particles" id="particles"></div>
+  
+  <div class="container">
+    <h1 class="main-title">ARCADE LEGENDS</h1>
+    <p class="subtitle">Choose Your Adventure • Keyboard • Gamepad • Touch</p>
+    
+    <div class="games-grid">
+      <!-- Retro Classics -->
+      <div class="game-category retro">
+        <h2 class="category-title">🕹️ RETRO CLASSICS</h2>
+        <p class="category-desc">Timeless arcade games that defined gaming culture</p>
+        <div class="games-list">
+          <button class="game-btn" onclick="launchGame('space-invaders')">
+            <span class="game-title">Space Invaders</span>
+            <span class="game-players">1P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('pacman')">
+            <span class="game-title">Pac-Man</span>
+            <span class="game-players">1-2P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('asteroids')">
+            <span class="game-title">Asteroids</span>
+            <span class="game-players">1-2P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('breakout')">
+            <span class="game-title">Breakout</span>
+            <span class="game-players">1-2P</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Classic Arcade -->
+      <div class="game-category classic">
+        <h2 class="category-title">🎮 CLASSIC ARCADE</h2>
+        <p class="category-desc">Simple yet addictive gameplay mechanics</p>
+        <div class="games-list">
+          <button class="game-btn" onclick="launchGame('snake')">
+            <span class="game-title">Snake Battle</span>
+            <span class="game-players">1-4P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('tanks')">
+            <span class="game-title">Combat Tanks</span>
+            <span class="game-players">1-2P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('frogger')">
+            <span class="game-title">Frogger</span>
+            <span class="game-players">1-2P</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Adventures -->
+      <div class="game-category action">
+        <h2 class="category-title">⚡ ACTION</h2>
+        <p class="category-desc">Fast-paced adventures and platforming challenges</p>
+        <div class="games-list">
+          <button class="game-btn" onclick="launchGame('side-scroller')">
+            <span class="game-title">Pixel Runner</span>
+            <span class="game-players">1-2P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('space-shooter')">
+            <span class="game-title">Galactic Defense</span>
+            <span class="game-players">1-2P</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Strategy -->
+      <div class="game-category strategy">
+        <h2 class="category-title">🧠 STRATEGY</h2>
+        <p class="category-desc">Think, plan, and defend your territory</p>
+        <div class="games-list">
+          <button class="game-btn" onclick="launchGame('tower-defense')">
+            <span class="game-title">Tower Defense</span>
+            <span class="game-players">1P</span>
+          </button>
+          <button class="game-btn" onclick="launchGame('missile-command')">
+            <span class="game-title">Missile Command</span>
+            <span class="game-players">1-2P</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls-info">
+    🎯 Keyboard • 🎮 Bluetooth Gamepad • 📱 Touch Controls Supported
+  </div>
+
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <script>
+    // Create floating particles
+    function createParticles() {
+      const particleContainer = document.getElementById('particles');
+      const colors = ['#00ffff', '#ff00ff', '#00ff41', '#ff6600', '#8a2be2', '#ffff00'];
+      
+      for (let i = 0; i < 50; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 15 + 's';
+        particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+        particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+        particleContainer.appendChild(particle);
+      }
+    }
+
+    // Launch game function
+    function launchGame(gameId) {
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      loadingOverlay.style.display = 'flex';
+      
+      // Play launch sound
+      playLaunchSound();
+      
+      setTimeout(() => {
+        switch(gameId) {
+          case 'space-invaders':
+            window.location.href = './retro games/space_invaders_modern_retro_index.html';
+            break;
+          case 'pacman':
+            window.location.href = './games/pacman.html';
+            break;
+          case 'snake':
+            window.location.href = './games/snake.html';
+            break;
+          case 'asteroids':
+            window.location.href = './games/asteroids.html';
+            break;
+          case 'breakout':
+            window.location.href = './games/breakout.html';
+            break;
+          case 'tanks':
+            window.location.href = './games/tanks.html';
+            break;
+          case 'frogger':
+            window.location.href = './games/frogger.html';
+            break;
+          case 'side-scroller':
+            window.location.href = './games/side-scroller.html';
+            break;
+          case 'space-shooter':
+            window.location.href = './games/space-shooter.html';
+            break;
+          case 'tower-defense':
+            window.location.href = './games/tower-defense.html';
+            break;
+          case 'missile-command':
+            window.location.href = './games/missile-command.html';
+            break;
+          default:
+            alert('Game coming soon!');
+            loadingOverlay.style.display = 'none';
+        }
+      }, 1000);
+    }
+
+    // Audio system for UI sounds
+    let audioContext;
+
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function playLaunchSound() {
+      initAudio();
+      
+      // Create a launch sound effect
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(880, audioContext.currentTime + 0.1);
+      oscillator.frequency.exponentialRampToValueAtTime(1320, audioContext.currentTime + 0.2);
+      
+      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+    }
+
+    // Add hover sound effects
+    document.querySelectorAll('.game-btn').forEach(btn => {
+      btn.addEventListener('mouseenter', () => {
+        if (audioContext) {
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = 800;
+          gainNode.gain.value = 0.02;
+          
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.05);
+        }
+      });
+    });
+
+    // Initialize particles when page loads
+    window.addEventListener('load', () => {
+      createParticles();
+      
+      // Initialize audio on first user interaction
+      document.addEventListener('click', initAudio, { once: true });
+    });
+
+    // Handle back navigation from games
+    window.addEventListener('pageshow', (event) => {
+      const loadingOverlay = document.getElementById('loadingOverlay');
+      loadingOverlay.style.display = 'none';
+    });
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        loadingOverlay.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
