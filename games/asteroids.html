@@ -219,9 +219,9 @@
 
     .hud {
       position: absolute;
-      top: 20px;
+      top: 60px;
       left: 20px;
-      right: 20px;
+      right: 80px;
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
@@ -286,8 +286,8 @@
 
     .back-btn {
       position: absolute;
-      top: 20px;
-      right: 200px;
+      bottom: 20px;
+      left: 20px;
       background: rgba(255, 0, 64, 0.2);
       border: 2px solid var(--enemy-red);
       border-radius: 15px;
@@ -432,6 +432,13 @@
       .back-btn {
         right: 20px;
       }
+      
+      .home-btn {
+        bottom: 15px;
+        left: 15px;
+        padding: 6px 12px;
+        font-size: 0.75rem;
+      }
     }
 
     @media (max-width: 480px) {
@@ -492,6 +499,14 @@
         padding: 14px 28px;
         font-size: 1.2rem;
       }
+      
+      .home-btn {
+        bottom: 10px;
+        left: 10px;
+        padding: 5px 10px;
+        font-size: 0.7rem;
+        gap: 4px;
+      }
     }
 
     /* Animation effects */
@@ -550,6 +565,60 @@
 
     .hidden {
       display: none !important;
+    }
+
+    .home-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: linear-gradient(135deg, #ff0040, #ff2056);
+      border: 2px solid #ff4070;
+      border-radius: 8px;
+      padding: 8px 16px;
+      color: white;
+      font-family: 'Orbitron', monospace;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      z-index: 1000;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(8px);
+      box-shadow: 
+        0 2px 10px rgba(255, 0, 64, 0.4),
+        inset 0 0 15px rgba(255, 255, 255, 0.1);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .home-btn:hover {
+      background: linear-gradient(135deg, #ff2060, #ff4080);
+      border-color: #ff6090;
+      transform: translateY(-1px);
+      box-shadow: 
+        0 4px 15px rgba(255, 0, 64, 0.6),
+        inset 0 0 20px rgba(255, 255, 255, 0.15);
+    }
+
+    .home-btn:active {
+      transform: translateY(0px);
+    }
+
+    /* Hide external/injected home buttons in top area */
+    *[style*="position: fixed"][style*="top"],
+    *[style*="position: absolute"][style*="top"] {
+      z-index: -1 !important;
+    }
+
+    /* Target elements that appear in top-right corner */
+    body > *:not(#gameContainer):not(.home-btn):not(script) {
+      position: static !important;
+      top: auto !important;
+      right: auto !important;
+      z-index: -1 !important;
     }
 
     @keyframes hyperspace-warp {
@@ -706,6 +775,12 @@
     </div>
   </div>
 
+  <!-- Home Button -->
+  <!-- <a href="../index.html" class="home-btn">
+    <span>←</span>
+    <span>HOME</span>
+  </a> -->
+
   <script>
     // Game configuration
     const CONFIG = {
@@ -760,7 +835,8 @@
       pausePressed: false,
       fullscreenPressed: false,
       restartPressed: false,
-      hyperspaceEffect: false
+      hyperspaceEffect: false,
+      waveTransition: false // Prevent multiple wave transitions
     };
 
     // Input handling
@@ -1190,10 +1266,10 @@
       constructor(x, y, size, vx, vy) {
         this.x = x;
         this.y = y;
-        this.size = size;
-        this.radius = CONFIG.ASTEROID_SIZES[size];
-        this.vx = vx || (Math.random() - 0.5) * CONFIG.ASTEROID_SPEEDS[size];
-        this.vy = vy || (Math.random() - 0.5) * CONFIG.ASTEROID_SPEEDS[size];
+        this.size = Math.max(0, Math.min(size, CONFIG.ASTEROID_SIZES.length - 1)); // Clamp size
+        this.radius = CONFIG.ASTEROID_SIZES[this.size];
+        this.vx = vx || (Math.random() - 0.5) * CONFIG.ASTEROID_SPEEDS[this.size];
+        this.vy = vy || (Math.random() - 0.5) * CONFIG.ASTEROID_SPEEDS[this.size];
         this.rotation = 0;
         this.rotationSpeed = (Math.random() - 0.5) * 0.1;
         this.points = this.generateShape();
@@ -1227,18 +1303,23 @@
       }
 
       split() {
-        if (this.size >= CONFIG.ASTEROID_SIZES.length - 1) return [];
+        // Only large (0) and medium (1) asteroids should split
+        // Small asteroids (size 2) should be destroyed completely
+        if (this.size >= 2) {
+          return [];
+        }
 
         const fragments = [];
         const newSize = this.size + 1;
-        const numFragments = 2 + Math.floor(Math.random() * 2); // 2-3 fragments
+        const numFragments = 2; // Always split into exactly 2 pieces
         
         for (let i = 0; i < numFragments; i++) {
-          const angle = (i / numFragments) * Math.PI * 2 + Math.random();
-          const speed = CONFIG.ASTEROID_SPEEDS[newSize] * (1.5 + Math.random());
+          const angle = (i / numFragments) * Math.PI * 2 + Math.random() * 0.5;
+          const speed = CONFIG.ASTEROID_SPEEDS[newSize] * (1.2 + Math.random() * 0.6);
+          const separationDistance = this.radius + CONFIG.ASTEROID_SIZES[newSize] + 10;
           const fragment = new Asteroid(
-            this.x + Math.cos(angle) * 10,
-            this.y + Math.sin(angle) * 10,
+            this.x + Math.cos(angle) * separationDistance,
+            this.y + Math.sin(angle) * separationDistance,
             newSize,
             Math.cos(angle) * speed,
             Math.sin(angle) * speed
@@ -1321,7 +1402,7 @@
             gameState.multiplier = Math.min(8, gameState.multiplier + 0.1);
             gameState.multiplierTimer = 300; // 5 seconds
             
-            // Create fragments
+            // Create fragments and remove asteroid
             const fragments = asteroid.split();
             gameState.asteroids.splice(i, 1);
             gameState.asteroids.push(...fragments);
@@ -1504,6 +1585,7 @@
       gameState.multiplier = 1;
       gameState.multiplierTimer = 0;
       gameState.wave = 1;
+      gameState.waveTransition = false;
       
       // Create initial asteroids
       createAsteroidField();
@@ -1512,7 +1594,22 @@
     }
 
     function createAsteroidField() {
-      const numAsteroids = CONFIG.INITIAL_ASTEROIDS + Math.floor(gameState.wave / 2);
+      // Progressive difficulty - add 1 asteroid every 2 waves, then every wave
+      const baseAsteroids = CONFIG.INITIAL_ASTEROIDS;
+      let waveBonus;
+      
+      if (gameState.wave <= 4) {
+        // Waves 1-4: +1 every 2 waves
+        waveBonus = Math.floor((gameState.wave - 1) / 2);
+      } else {
+        // Waves 5+: +1 every wave (starting from wave 4 base)
+        waveBonus = 2 + (gameState.wave - 4);
+      }
+      
+      const maxAsteroids = 12; // Cap at 12 asteroids per wave
+      const numAsteroids = Math.min(baseAsteroids + waveBonus, maxAsteroids);
+      
+      // Debug: console.log(`Wave ${gameState.wave}: Creating ${numAsteroids} asteroids (base: ${baseAsteroids}, bonus: ${waveBonus})`);
       
       for (let i = 0; i < numAsteroids; i++) {
         let x, y;
@@ -1554,7 +1651,7 @@
       }
 
       // Check wave completion
-      if (gameState.asteroids.length === 0) {
+      if (gameState.asteroids.length === 0 && !gameState.waveTransition) {
         nextWave();
       }
 
@@ -1562,6 +1659,10 @@
     }
 
     function nextWave() {
+      // Prevent multiple simultaneous wave transitions
+      if (gameState.waveTransition) return;
+      gameState.waveTransition = true;
+      
       gameState.wave++;
       
       // Bonus points for completing wave
@@ -1572,9 +1673,65 @@
         }
       });
       
-      // Create new asteroid field
+      // Show wave completion message
+      showWaveMessage(`WAVE ${gameState.wave - 1} COMPLETE!`);
+      
+      // Create new asteroid field after delay
       setTimeout(() => {
-        createAsteroidField();
+        showWaveMessage(`WAVE ${gameState.wave} INCOMING!`);
+        setTimeout(() => {
+          createAsteroidField();
+          updateHUD();
+          gameState.waveTransition = false; // Allow next wave transition
+        }, 1000);
+      }, 2000);
+    }
+
+    function showWaveMessage(message) {
+      // Create a temporary message overlay
+      const messageDiv = document.createElement('div');
+      messageDiv.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-family: 'Orbitron', monospace;
+        font-size: 3rem;
+        font-weight: 900;
+        color: #00ffff;
+        text-shadow: 0 0 40px rgba(0, 255, 255, 0.8);
+        background: rgba(0, 0, 17, 0.9);
+        border: 3px solid #00ffff;
+        border-radius: 20px;
+        padding: 30px 60px;
+        z-index: 1000;
+        pointer-events: none;
+        backdrop-filter: blur(10px);
+        animation: wave-message 2s ease-in-out forwards;
+      `;
+      messageDiv.textContent = message;
+      
+      // Add keyframe animation
+      if (!document.querySelector('#wave-message-style')) {
+        const style = document.createElement('style');
+        style.id = 'wave-message-style';
+        style.textContent = `
+          @keyframes wave-message {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            25% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            75% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      
+      document.body.appendChild(messageDiv);
+      
+      setTimeout(() => {
+        if (messageDiv.parentNode) {
+          messageDiv.parentNode.removeChild(messageDiv);
+        }
       }, 2000);
     }
 
@@ -1633,10 +1790,10 @@
     }
 
     function updateHUD() {
-      const totalScore = gameState.score[0] + (gameState.score[1] || 0);
-      document.getElementById('scoreDisplay').textContent = totalScore;
+      const totalScore = Math.floor(gameState.score[0] + (gameState.score[1] || 0));
+      document.getElementById('scoreDisplay').textContent = totalScore.toLocaleString();
       document.getElementById('waveDisplay').textContent = gameState.wave;
-      document.getElementById('highScoreDisplay').textContent = gameState.highScore;
+      document.getElementById('highScoreDisplay').textContent = Math.floor(gameState.highScore).toLocaleString();
       document.getElementById('asteroidsDisplay').textContent = gameState.asteroids.length;
       document.getElementById('multiplierDisplay').textContent = 'x' + gameState.multiplier.toFixed(1);
       
@@ -1767,6 +1924,34 @@
 
     // Initialize
     showMenu();
+    
+    // Hide external home buttons that might interfere
+    function hideExternalHomeButtons() {
+      // Look for elements that might be external HOME buttons
+      const allElements = document.querySelectorAll('*');
+      allElements.forEach(element => {
+        const computedStyle = window.getComputedStyle(element);
+        const text = element.textContent;
+        
+        // Check if it's likely an external HOME button
+        if (
+          text && text.trim().toUpperCase().includes('HOME') &&
+          element !== document.querySelector('.home-btn') &&
+          !element.closest('#gameContainer') &&
+          (computedStyle.position === 'fixed' || computedStyle.position === 'absolute') &&
+          (parseInt(computedStyle.top) < 100 || parseInt(computedStyle.right) < 100)
+        ) {
+          element.style.display = 'none';
+          element.style.visibility = 'hidden';
+          element.style.opacity = '0';
+          element.style.pointerEvents = 'none';
+        }
+      });
+    }
+    
+    // Run immediately and periodically to catch dynamically added elements
+    hideExternalHomeButtons();
+    setInterval(hideExternalHomeButtons, 1000);
     
     // Handle visibility change to pause game
     document.addEventListener('visibilitychange', () => {
