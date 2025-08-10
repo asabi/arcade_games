@@ -1174,6 +1174,11 @@
           console.log(`Ghost ${this.type} (${this.mode}): pos(${this.x}, ${this.y}), dir(${this.direction.x}, ${this.direction.y}), target(${this.target.x}, ${this.target.y})`);
         }
         
+        // Debug: Log eaten ghost behavior
+        if (this.mode === 'eaten' && this.animFrame % 30 === 0) { // Log every 0.5 seconds for eaten ghosts
+          console.log(`Eaten Ghost ${this.type}: pos(${this.x}, ${this.y}), target(${this.target.x}, ${this.target.y}), modeTimer: ${this.modeTimer}`);
+        }
+        
         // Handle tunnel wrapping
         if (this.x < 0) this.x = CONFIG.MAZE_WIDTH - 1;
         if (this.x >= CONFIG.MAZE_WIDTH) this.x = 0;
@@ -1202,15 +1207,33 @@
           
           this.target = { x: targetX, y: targetY };
         } else if (this.mode === 'eaten') {
-          // Return to ghost house - target the center of the house area
-          this.target = { x: 20, y: 10 };
-          // Check if ghost is close enough to the house to enter
-          if (Math.abs(this.x - 20) <= 1 && Math.abs(this.y - 10) <= 1) {
-            // Move to exact center of house
+          // Return to ghost house - target the entrance area
+          this.target = { x: 20, y: 9 };
+          
+          // Debug: Log eaten ghost targeting
+          if (this.animFrame % 60 === 0) {
+            console.log(`Eaten Ghost ${this.type}: at (${this.x}, ${this.y}), targeting (${this.target.x}, ${this.target.y}), distance: ${Math.abs(this.x - 20) + Math.abs(this.y - 9)}`);
+          }
+          
+          // Emergency unstuck logic - if ghost is stuck for too long, teleport closer to house
+          if (this.modeTimer > 300) { // 5 seconds stuck
+            console.log(`Ghost ${this.type} stuck for too long, teleporting closer to house`);
+            // Teleport to a position closer to the house
+            if (Math.abs(this.x - 20) > 5 || Math.abs(this.y - 9) > 5) {
+              this.x = 20 + (Math.random() > 0.5 ? 5 : -5);
+              this.y = 9 + (Math.random() > 0.5 ? 5 : -5);
+              this.modeTimer = 0; // Reset timer
+            }
+          }
+          
+          // Check if ghost is close enough to the house entrance to enter
+          if (Math.abs(this.x - 20) <= 1 && Math.abs(this.y - 9) <= 1) {
+            // Move to house entrance
             this.x = 20;
-            this.y = 10;
+            this.y = 9;
             // Stay in house for a moment before respawning
-            if (this.modeTimer > 120) { // 2 seconds at 60fps for faster respawn
+            if (this.modeTimer > 60) { // 1 second at 60fps for faster respawn
+              console.log(`Ghost ${this.type} respawning!`);
               this.mode = 'chase';
               this.modeTimer = 0;
               
@@ -1247,6 +1270,7 @@
                       if (this.canMoveTo(this.x + dx, this.y + dy)) {
                         this.x += dx;
                         this.y += dy;
+                        console.log(`Ghost ${this.type} adjusted to valid position: (${this.x}, ${this.y})`);
                         return;
                       }
                     }
@@ -1378,6 +1402,15 @@
               // Eaten ghosts prioritize the most direct path to ghost house
               const distance = Math.abs(newX - this.target.x) + Math.abs(newY - this.target.y);
               score = -distance; // Lower score = closer to target = better
+              
+              // Bonus for moving towards the house entrance
+              const houseX = 20;
+              const houseY = 9;
+              const currentDistance = Math.abs(this.x - houseX) + Math.abs(this.y - houseY);
+              const newDistance = Math.abs(newX - houseX) + Math.abs(newY - houseY);
+              if (newDistance < currentDistance) {
+                score -= 20; // Big bonus for moving closer to house
+              }
             } else {
               // Normal mode - intelligent pathfinding
               const distance = Math.abs(newX - this.target.x) + Math.abs(newY - this.target.y);
@@ -1414,9 +1447,6 @@
         
         if (bestDirection) {
           this.direction = bestDirection;
-          // Move in the new direction
-          this.x += bestDirection.x;
-          this.y += bestDirection.y;
         } else {
           // If no valid direction found, try to reverse (emergency fallback)
           this.direction.x *= -1;
@@ -1514,7 +1544,7 @@
 
         if (this.mode === 'eaten') {
           // Check if ghost is in the house and respawning
-          if (this.x === 20 && this.y === 10 && this.modeTimer > 60) {
+          if (this.x === 20 && this.y === 9 && this.modeTimer > 60) {
             // Show respawning animation (fading in)
             const alpha = Math.min(1, (this.modeTimer - 60) / 60);
             ctx.globalAlpha = alpha;
