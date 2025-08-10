@@ -324,6 +324,110 @@
     .hidden {
       display: none !important;
     }
+
+    /* Wave Indicator */
+    .wave-indicator {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2000;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .wave-text {
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: #00ffff;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      margin-bottom: 10px;
+      text-shadow: 
+        0 0 10px #00ffff,
+        0 0 20px #00ffff,
+        0 0 30px #00ffff,
+        0 0 40px #00ffff;
+      animation: wave-text-glow 2s ease-in-out;
+    }
+
+    .wave-number {
+      font-size: 4rem;
+      font-weight: 900;
+      color: #ff0040;
+      text-shadow: 
+        0 0 15px #ff0040,
+        0 0 25px #ff0040,
+        0 0 35px #ff0040,
+        0 0 45px #ff0040;
+      animation: wave-number-glow 2s ease-in-out;
+    }
+
+    .wave-indicator.show {
+      animation: wave-fade-in 0.5s ease-out forwards;
+    }
+
+    .wave-indicator.hide {
+      animation: wave-fade-out 0.5s ease-in forwards;
+    }
+
+    @keyframes wave-fade-in {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
+      100% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
+    @keyframes wave-fade-out {
+      0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.2);
+      }
+    }
+
+    @keyframes wave-text-glow {
+      0%, 100% {
+        text-shadow: 
+          0 0 10px #00ffff,
+          0 0 20px #00ffff,
+          0 0 30px #00ffff,
+          0 0 40px #00ffff;
+      }
+      50% {
+        text-shadow: 
+          0 0 15px #00ffff,
+          0 0 25px #00ffff,
+          0 0 35px #00ffff,
+          0 0 45px #00ffff,
+          0 0 55px #00ffff;
+      }
+    }
+
+    @keyframes wave-number-glow {
+      0%, 100% {
+        text-shadow: 
+          0 0 15px #ff0040,
+          0 0 25px #ff0040,
+          0 0 35px #ff0040,
+          0 0 45px #ff0040;
+      }
+      50% {
+        text-shadow: 
+          0 0 20px #ff0040,
+          0 0 30px #ff0040,
+          0 0 40px #ff0040,
+          0 0 50px #ff0040,
+          0 0 60px #ff0040;
+      }
+    }
     
     /* Side Panels */
     .side-panel {
@@ -699,6 +803,12 @@
         <span id="livesValue" class="stat-value">3</span>
       </div>
     </div>
+
+    <!-- Wave Indicator -->
+    <div id="waveIndicator" class="wave-indicator hidden">
+      <div class="wave-text">WAVE</div>
+      <div class="wave-number">1</div>
+    </div>
   </div>
 
   <!-- Home Button -->
@@ -1034,6 +1144,11 @@
       hideElement('mainMenu');
       showElement('gameStats');
       
+      // Show initial wave indicator
+      setTimeout(() => {
+        showWaveIndicator();
+      }, 500);
+      
       gameLoop();
     }
 
@@ -1050,6 +1165,7 @@
 
     function restartGame() {
       startGame();
+      // Wave indicator will be shown by startGame function
     }
 
     function showMainMenu() {
@@ -1163,6 +1279,8 @@
       // Update wave - more gradual progression
       if (gameState.enemies.length === 0 && gameState.score > gameState.wave * 150) {
         gameState.wave++;
+        // Show wave indicator
+        showWaveIndicator();
       }
 
       // Update UI
@@ -1313,6 +1431,31 @@
 
     function hideElement(id) {
       document.getElementById(id).classList.add('hidden');
+    }
+
+    function showWaveIndicator() {
+      const waveIndicator = document.getElementById('waveIndicator');
+      const waveNumber = document.querySelector('.wave-number');
+      
+      // Update the wave number
+      waveNumber.textContent = gameState.wave;
+      
+      // Remove any existing classes
+      waveIndicator.classList.remove('hidden', 'show', 'hide');
+      
+      // Show the indicator
+      waveIndicator.classList.add('show');
+      
+      // Hide after 2 seconds with fade out animation
+      setTimeout(() => {
+        waveIndicator.classList.remove('show');
+        waveIndicator.classList.add('hide');
+        
+        // Hide completely after animation
+        setTimeout(() => {
+          waveIndicator.classList.add('hidden');
+        }, 500);
+      }, 2000);
     }
 
     function goHome() {
