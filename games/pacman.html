@@ -1157,9 +1157,9 @@
           if (this.animFrame % 2 === 0) { // Move every 2 frames when eaten
             this.move();
           }
-        } else if (this.mode === 'chase' && this.modeTimer < 30) {
-          // Ghosts wait 0.5 seconds after respawning before moving
-          // This prevents them from immediately chasing the player
+        } else if (this.mode === 'chase' && this.modeTimer < 15) {
+          // Ghosts wait only 0.25 seconds after respawning before moving
+          // This prevents them from immediately chasing the player but allows faster response
         } else if (this.mode === 'frightened') {
           // Frightened ghosts move slower (more vulnerable)
           if (this.animFrame % 4 === 0) { // Move every 4 frames when frightened
@@ -1169,14 +1169,14 @@
           this.move();
         }
         
-        // Debug: Log ghost movement
-        if (this.type === 0 && this.animFrame % 60 === 0) { // Log every second for Blinky
-          console.log(`Ghost ${this.type} (${this.mode}): pos(${this.x}, ${this.y}), dir(${this.direction.x}, ${this.direction.y}), target(${this.target.x}, ${this.target.y})`);
+        // Debug: Log ghost movement for all ghosts
+        if (this.animFrame % 60 === 0) { // Log every second for all ghosts
+          console.log(`Ghost ${this.type} (${this.mode}): pos(${this.x}, ${this.y}), dir(${this.direction.x}, ${this.direction.y}), target(${this.target.x}, ${this.target.y}), modeTimer: ${this.modeTimer}`);
         }
         
         // Debug: Log eaten ghost behavior
         if (this.mode === 'eaten' && this.animFrame % 30 === 0) { // Log every 0.5 seconds for eaten ghosts
-          console.log(`Eaten Ghost ${this.type}: pos(${this.x}, ${this.y}), target(${this.target.x}, ${this.target.y}), modeTimer: ${this.modeTimer}`);
+          console.log(`Eaten Ghost ${this.type}: at (${this.x}, ${this.y}), target(${this.target.x}, ${this.target.y}), modeTimer: ${this.modeTimer}`);
         }
         
         // Handle tunnel wrapping
@@ -1810,7 +1810,7 @@
         }
         const ghost = new Ghost(startX, startY, CONFIG.COLORS.ghosts[i], i);
         // Stagger ghost start times for authentic Pac-Man behavior
-        ghost.modeTimer = i * 200;
+        ghost.modeTimer = i * 50; // Reduced from 200 to 50 for faster start
         gameState.ghosts.push(ghost);
       }
 

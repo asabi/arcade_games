@@ -33,7 +33,8 @@
       background: var(--bg-dark);
       color: var(--text-light);
       font-family: 'Orbitron', monospace;
-      overflow: hidden;
+      /* Remove overflow hidden to allow scrolling */
+      overflow-x: hidden;
     }
 
     .stars-bg {
@@ -58,15 +59,17 @@
 
     .container {
       position: relative;
-      height: 100vh;
+      /* Remove fixed height to allow content to expand */
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       padding: 20px;
       z-index: 1;
-      min-height: 100vh;
       box-sizing: border-box;
+      /* Ensure container can grow with content */
+      height: auto;
     }
 
     .main-title {
@@ -105,8 +108,8 @@
       max-width: 1200px;
       width: 100%;
       margin-bottom: 2rem;
-      max-height: 60vh;
-      overflow-y: auto;
+      /* Remove fixed max-height to prevent cutoff */
+      overflow-y: visible;
       padding: 10px;
       scrollbar-width: thin;
       scrollbar-color: var(--neon-cyan) transparent;
@@ -297,14 +300,24 @@
         padding: 15px;
         justify-content: flex-start;
         padding-top: 20px;
+        /* Ensure container can expand to fit content */
+        min-height: auto;
+        height: auto;
+        /* Allow scrolling on mobile */
+        overflow-y: visible;
       }
       
       .games-grid {
         grid-template-columns: 1fr;
         gap: 15px;
+        /* Remove height restrictions on mobile */
         max-height: none;
         overflow-y: visible;
         margin-bottom: 1rem;
+        /* Ensure grid takes full available height */
+        height: auto;
+        /* Ensure all content is visible */
+        overflow: visible;
       }
       
       .main-title {
@@ -321,6 +334,8 @@
       
       .game-category {
         padding: 20px;
+        /* Ensure category content is fully visible */
+        overflow: visible;
       }
       
       .category-title {
@@ -353,6 +368,9 @@
         transform: none;
         font-size: 0.7rem;
         padding: 8px 16px;
+        /* Ensure controls info doesn't overlap content */
+        position: relative;
+        margin-top: 20px;
       }
     }
 
@@ -360,6 +378,11 @@
       .container {
         padding: 10px;
         padding-top: 15px;
+        /* Ensure container can expand */
+        height: auto;
+        min-height: auto;
+        /* Allow scrolling on very small screens */
+        overflow-y: visible;
       }
       
       .main-title {
@@ -376,10 +399,16 @@
       .games-grid {
         gap: 12px;
         margin-bottom: 0.5rem;
+        /* Ensure no height restrictions */
+        height: auto;
+        max-height: none;
+        overflow: visible;
       }
       
       .game-category {
         padding: 15px;
+        /* Ensure all content is visible */
+        overflow: visible;
       }
       
       .category-title {
@@ -411,6 +440,9 @@
         right: 10px;
         font-size: 0.65rem;
         padding: 6px 12px;
+        /* Ensure controls info doesn't overlap */
+        position: relative;
+        margin-top: 15px;
       }
     }
 
@@ -418,6 +450,11 @@
       .container {
         justify-content: flex-start;
         padding-top: 10px;
+        /* Allow container to expand */
+        height: auto;
+        min-height: auto;
+        /* Ensure scrolling works on short screens */
+        overflow-y: visible;
       }
       
       .main-title {
@@ -431,9 +468,23 @@
       }
       
       .games-grid {
+        /* Remove height restrictions for short screens */
         max-height: none;
         overflow-y: visible;
         margin-bottom: 1rem;
+        height: auto;
+        /* Ensure all content is visible */
+        overflow: visible;
+      }
+      
+      .controls-info {
+        /* Ensure controls info is visible */
+        position: relative;
+        margin-top: 15px;
+        bottom: auto;
+        left: auto;
+        right: auto;
+        transform: none;
       }
     }
 
@@ -521,7 +572,7 @@
         <h2 class="category-title">⚡ ACTION</h2>
         <p class="category-desc">Fast-paced adventures and platforming challenges</p>
         <div class="games-list">
-          <button class="game-btn" onclick="launchGame('side-scroller')">
+          <button class="game-btn" onclick="launchGame('pixel-runner')">
             <span class="game-title">Pixel Runner</span>
             <span class="game-players">1-2P</span>
           </button>
@@ -606,8 +657,8 @@
           case 'frogger':
             window.location.href = './games/frogger.html';
             break;
-          case 'side-scroller':
-            window.location.href = './games/side-scroller.html';
+          case 'pixel-runner':
+            window.location.href = './games/pixel-runner.html';
             break;
           case 'space-shooter':
             window.location.href = './games/space-shooter.html';
@@ -698,34 +749,45 @@
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
       
-      // Adjust container height and positioning
+      // Always ensure container can expand and scroll
+      container.style.overflowY = 'visible';
+      container.style.height = 'auto';
+      container.style.minHeight = '100vh';
+      
+      // Adjust container positioning
       if (viewportHeight < 600) {
         container.style.justifyContent = 'flex-start';
         container.style.paddingTop = '10px';
-        gamesGrid.style.maxHeight = 'none';
-        gamesGrid.style.overflowY = 'visible';
       } else {
         container.style.justifyContent = 'center';
         container.style.paddingTop = '20px';
-        gamesGrid.style.maxHeight = '60vh';
-        gamesGrid.style.overflowY = 'auto';
       }
+      
+      // Ensure games grid is always fully visible
+      gamesGrid.style.maxHeight = 'none';
+      gamesGrid.style.overflowY = 'visible';
+      gamesGrid.style.height = 'auto';
+      gamesGrid.style.overflow = 'visible';
       
       // Adjust controls info positioning for small screens
       if (viewportWidth < 768) {
-        controlsInfo.style.left = '20px';
-        controlsInfo.style.right = '20px';
+        controlsInfo.style.position = 'relative';
+        controlsInfo.style.left = 'auto';
+        controlsInfo.style.right = 'auto';
         controlsInfo.style.transform = 'none';
+        controlsInfo.style.marginTop = '20px';
+        controlsInfo.style.bottom = 'auto';
       } else {
+        controlsInfo.style.position = 'fixed';
         controlsInfo.style.left = '50%';
         controlsInfo.style.right = 'auto';
         controlsInfo.style.transform = 'translateX(-50%)';
+        controlsInfo.style.marginTop = '0';
+        controlsInfo.style.bottom = '20px';
       }
       
-      // Ensure games grid is scrollable if needed
-      if (gamesGrid.scrollHeight > gamesGrid.clientHeight) {
-        gamesGrid.style.overflowY = 'auto';
-      }
+      // Force a reflow to ensure proper layout
+      gamesGrid.offsetHeight;
     }
 
     // Handle back navigation from games
