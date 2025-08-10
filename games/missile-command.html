@@ -1233,7 +1233,7 @@
       SMART_BOMB_RADIUS: 200,
       INITIAL_CITIES: 6,
       INITIAL_SMART_BOMBS: 3,
-      MISSILES_PER_WAVE: 3, // Reduced from 4 for easier start
+      MISSILES_PER_WAVE: 3, // Base missiles for wave 1
       WAVE_DELAY: 5000, // Increased from 3000 for longer delay between waves
       COLORS: {
         city: '#00ff41',
@@ -1981,12 +1981,17 @@
         }
       }
 
-      // Spawn missiles
+      // Spawn missile waves
       if (gameState.missileSpawnTimer > 0) {
         gameState.missileSpawnTimer--;
-      } else {
+      } else if (gameState.missilesSpawned < gameState.missilesPerWave) {
+        // Spawn a missile from the current wave
         spawnMissile();
-        gameState.missileSpawnTimer = 200 + Math.random() * 300; // More generous random spawn interval (was 120 + random 180)
+        
+        // Set timer for next missile in this wave (shorter intervals for wave effect)
+        if (gameState.missilesSpawned < gameState.missilesPerWave) {
+          gameState.missileSpawnTimer = 80 + Math.random() * 120; // 80-200ms between missiles in a wave
+        }
       }
 
       // Update entities
@@ -2079,28 +2084,26 @@
       gameState.missileSpawnTimer = 0;
       gameState.missilesSpawned = 0;
       
-      // Increase missiles per wave as difficulty increases
-      gameState.missilesPerWave = CONFIG.MISSILES_PER_WAVE + Math.floor((gameState.wave - 1) / 2);
+      // Increase missiles per wave by 25% each wave (exponential growth)
+      if (gameState.wave === 1) {
+        gameState.missilesPerWave = 3; // Start with exactly 3 missiles
+      } else {
+        // Increase by 25% each wave, rounded to nearest integer
+        gameState.missilesPerWave = Math.round(gameState.missilesPerWave * 1.25);
+      }
       
       // Add smart bomb every 3 waves
       if (gameState.wave % 3 === 0) {
         gameState.smartBombs++;
       }
       
-      // Mode-specific wave logic
-      if (gameState.mode === 'survival') {
-        // Survival mode: cities don't respawn, increasing difficulty
-        gameState.missileSpawnTimer = Math.max(30, 120 - gameState.wave * 5);
-      } else if (gameState.mode === 'cooperative') {
-        // Co-op mode: more missiles but shared resources
-        gameState.missileSpawnTimer = Math.max(40, 100 - gameState.wave * 3);
-      } else if (gameState.mode === 'time-attack') {
-        // Time attack: faster missiles, time limit
-        gameState.missileSpawnTimer = Math.max(20, 80 - gameState.wave * 4);
-      } else {
-        // Classic mode: more forgiving spawn rate
-        gameState.missileSpawnTimer = Math.max(60, 150 - gameState.wave * 2);
-      }
+      // Set initial delay before starting missile wave (gives player time to prepare)
+      gameState.missileSpawnTimer = 180; // 3 seconds delay before wave starts
+      
+      // Show incoming wave warning
+      setTimeout(() => {
+        showWaveMessage('WAVE INCOMING!');
+      }, 1000); // Show after 1 second
       
       updateHUD();
     }
