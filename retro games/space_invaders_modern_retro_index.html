@@ -5,43 +5,273 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Space Invaders – Modern Retro</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+    
     :root {
-      --bg: #0a0a0a;
-      --fg: #e6f1ff;
-      --accent: #00e5a8;
+      --bg-space: #000011;
+      --ship-cyan: #00ffff;
+      --enemy-red: #ff0040;
+      --bullet-yellow: #ffff00;
+      --powerup-pink: #ff00ff;
+      --text-light: #e6f1ff;
+      --neon-green: #00ff41;
+      --neon-purple: #8a2be2;
+      --card-bg: rgba(20, 20, 30, 0.9);
+      --border-glow: rgba(0, 255, 255, 0.3);
     }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     html, body {
-      margin: 0; height: 100%; background: var(--bg); color: var(--fg);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      height: 100%;
+      background: var(--bg-space);
+      color: var(--text-light);
+      font-family: 'Orbitron', monospace;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
+
     #wrap {
-      position: fixed; inset: 0; display: grid; place-items: center;
-      user-select: none; -webkit-user-select: none; touch-action: none;
+      position: fixed; 
+      inset: 0; 
+      display: grid; 
+      place-items: center;
+      user-select: none; 
+      -webkit-user-select: none; 
+      touch-action: none;
+      background: 
+        radial-gradient(circle at 20% 30%, rgba(0, 255, 255, 0.1) 0%, transparent 30%),
+        radial-gradient(circle at 80% 70%, rgba(255, 0, 64, 0.1) 0%, transparent 30%),
+        radial-gradient(circle at 50% 20%, rgba(255, 0, 255, 0.05) 0%, transparent 40%);
     }
-    canvas { width: 100vw; height: 100vh; display: block; background: #000; }
+
+    canvas { 
+      width: 100vw; 
+      height: 100vh; 
+      display: block; 
+      background: var(--bg-space);
+      border: 4px solid var(--ship-cyan);
+      border-radius: 15px;
+      box-shadow: 
+        0 0 50px rgba(0, 255, 255, 0.5),
+        inset 0 0 50px rgba(0, 255, 255, 0.1);
+    }
+
     .overlay {
-      position: absolute; inset: 0; display: grid; place-items: center;
-      padding: 24px; background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
+      position: absolute; 
+      inset: 0; 
+      display: grid; 
+      place-items: center;
+      padding: 24px; 
+      background: rgba(0, 0, 17, 0.9); 
+      backdrop-filter: blur(12px);
     }
+
     .card {
-      max-width: 720px; width: min(90vw, 720px);
-      background: rgba(10,10,10,.9); border: 1px solid #1f2937;
-      border-radius: 16px; padding: 20px 22px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+      max-width: 720px; 
+      width: min(90vw, 720px);
+      background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(255, 0, 64, 0.1));
+      border: 3px solid var(--ship-cyan);
+      border-radius: 25px; 
+      padding: 30px; 
+      box-shadow: 
+        0 0 60px rgba(0, 255, 255, 0.4),
+        inset 0 0 40px rgba(0, 255, 255, 0.1);
+      text-align: center;
     }
-    h1 { margin: 0 0 8px; font-size: clamp(20px, 3.2vw, 32px); letter-spacing: .5px; }
-    p { margin: 8px 0; opacity: .88; line-height: 1.4; }
-    .kbd { display: inline-block; padding: 2px 6px; border: 1px solid #374151; border-radius: 6px; background: #0b0b0b; font-weight: 600; }
+
+    h1 { 
+      margin: 0 0 20px; 
+      font-size: clamp(20px, 3.2vw, 32px); 
+      letter-spacing: .5px;
+      background: linear-gradient(45deg, var(--ship-cyan), var(--enemy-red), var(--bullet-yellow));
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradient-shift 3s ease-in-out infinite;
+    }
+
+    @keyframes gradient-shift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    p { 
+      margin: 15px 0; 
+      opacity: .88; 
+      line-height: 1.4; 
+      font-size: 1.1rem;
+    }
+
+    .kbd { 
+      display: inline-block; 
+      padding: 4px 8px; 
+      border: 1px solid var(--ship-cyan); 
+      border-radius: 6px; 
+      background: rgba(0, 255, 255, 0.1); 
+      font-weight: 600;
+      color: var(--ship-cyan);
+      box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+    }
+
     .btn {
-      margin-top: 14px; display: inline-block; padding: 10px 16px; border-radius: 10px;
-      border: 1px solid #334155; color: var(--fg); background: linear-gradient(180deg,#0f172a,#0b1220);
-      font-weight: 700; letter-spacing: .4px; cursor: pointer;
+      margin-top: 20px; 
+      display: inline-block; 
+      padding: 12px 24px; 
+      border-radius: 10px;
+      border: 2px solid var(--ship-cyan); 
+      color: var(--text-light); 
+      background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 255, 255, 0.1));
+      font-weight: 700; 
+      letter-spacing: .4px; 
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
     }
-    .btn:active { transform: translateY(1px); }
-    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-    .muted { opacity: .7; }
-    .hidden { display:none; }
+
+    .btn:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(0, 255, 255, 0.2));
+      border-color: var(--neon-green);
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .btn:active { 
+      transform: translateY(0px); 
+    }
+
+    .row { 
+      display: flex; 
+      gap: 8px; 
+      flex-wrap: wrap; 
+      align-items: center; 
+      justify-content: center;
+    }
+
+          .muted { 
+        opacity: .7; 
+        color: var(--text-light);
+      }
+
+    .hidden { 
+      display: none; 
+    }
+
     .top-left {
-      position: absolute; left: 12px; top: 8px; font-size: 12px; opacity: .7;
+      position: absolute; 
+      left: 12px; 
+      top: 8px; 
+      font-size: 12px; 
+      opacity: .7;
+    }
+
+    /* Home Button */
+    .home-btn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: linear-gradient(135deg, #ff0040, #ff2056);
+      border: 2px solid #ff4070;
+      border-radius: 8px;
+      padding: 8px 16px;
+      color: white;
+      font-family: 'Orbitron', monospace;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      z-index: 1000;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(8px);
+      box-shadow: 
+        0 2px 10px rgba(255, 0, 64, 0.4),
+        inset 0 0 15px rgba(255, 255, 255, 0.1);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .home-btn:hover {
+      background: linear-gradient(135deg, #ff2060, #ff4080);
+      border-color: #ff6090;
+      transform: translateY(-1px);
+      box-shadow: 
+        0 4px 15px rgba(255, 0, 64, 0.6),
+        inset 0 0 20px rgba(255, 255, 255, 0.15);
+    }
+
+    .home-btn:active {
+      transform: translateY(0px);
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+      .card {
+        padding: 20px;
+        margin: 10px;
+      }
+      
+      h1 {
+        font-size: 1.8rem;
+        margin-bottom: 15px;
+      }
+      
+      p {
+        font-size: 1rem;
+        margin: 12px 0;
+      }
+      
+      .btn {
+        padding: 10px 20px;
+        font-size: 1rem;
+      }
+      
+      .home-btn {
+        bottom: 15px;
+        left: 15px;
+        padding: 6px 12px;
+        font-size: 0.75rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 15px;
+        margin: 5px;
+      }
+      
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 10px;
+      }
+      
+      p {
+        font-size: 0.9rem;
+        margin: 8px 0;
+      }
+      
+      .btn {
+        padding: 8px 16px;
+        font-size: 0.9rem;
+      }
+      
+      .home-btn {
+        bottom: 10px;
+        left: 10px;
+        padding: 5px 10px;
+        font-size: 0.7rem;
+        gap: 4px;
+      }
     }
   </style>
 </head>
@@ -64,7 +294,7 @@
           <p class="muted">Gamepad: Left stick/D-Pad to move, <span class="kbd">A / Cross</span> to fire, <span class="kbd">Start</span> to pause.</p>
         </div>
 
-        <div style="margin-top:10px; padding:10px; border:1px solid #334155; border-radius:12px;">
+        <div style="margin-top:20px; padding:15px; border:2px solid var(--ship-cyan); border-radius:12px; background: rgba(0, 255, 255, 0.05);">
           <p class="muted" style="margin-top:0">Settings</p>
           <div class="row" style="gap:12px; align-items:center;">
             <label class="row" style="gap:6px; align-items:center;">
@@ -74,7 +304,7 @@
           </div>
           <div class="row" style="gap:12px; align-items:center; margin-top:8px;">
             <label for="optChain">Chain explosions</label>
-            <select id="optChain" style="background:#0b1220; border:1px solid #334155; color:#e6f1ff; border-radius:8px; padding:6px 8px;">
+            <select id="optChain" style="background:rgba(0, 255, 255, 0.1); border:1px solid var(--ship-cyan); color:var(--text-light); border-radius:8px; padding:6px 8px; font-family: 'Orbitron', monospace;">
               <option value="off">Off</option>
               <option value="light">Light</option>
               <option value="medium" selected>Medium</option>
@@ -99,7 +329,11 @@
       </div>
     </div>
 
-    <div class="top-left muted" id="dbg"></div>
+    <!-- Home Button -->
+    <a href="../index.html" class="home-btn">
+      <span>←</span>
+      <span>HOME</span>
+    </a>
   </div>
 
   <script type="module">
