@@ -680,7 +680,7 @@
           </div>
         </div>
 
-        <button class="btn" onclick="startGame()">START ARTILLERY</button>
+        <button class="btn" id="startGameBtn">START ARTILLERY</button>
       </div>
     </div>
 
@@ -690,8 +690,8 @@
         <h1 class="title">BATTLE COMPLETE</h1>
         <div id="finalStats" style="margin: 25px 0; font-size: 1.3rem;"></div>
         <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
-          <button class="btn" onclick="restartGame()">ARTILLERY AGAIN</button>
-          <button class="btn" onclick="showMenu()">MAIN MENU</button>
+          <button class="btn" id="restartGameBtn">ARTILLERY AGAIN</button>
+          <button class="btn" id="showMenuBtn">MAIN MENU</button>
         </div>
       </div>
     </div>
@@ -705,10 +705,10 @@
       TERRAIN_HEIGHT: 100,
       TANK_SIZE: 20,
       TANK_SPEED: 3.5,
-      BULLET_SPEED: 8,
+      BULLET_SPEED: 16,
       BULLET_SIZE: 4,
       EXPLOSION_SIZE: 40,
-      GRAVITY: 0.3,
+      GRAVITY: 0.2,
       TERRAIN_DESTRUCTION_RADIUS: 25,
       MAX_HEALTH: 100,
       DAMAGE_PER_HIT: 25,
@@ -889,15 +889,17 @@
 
     // Game entities
     class Tank {
-      constructor(x, y, color, isPlayer = true, playerIndex = 0) {
+      constructor(x, y, color, isPlayer = true, playerIndex = 0, dropping = false) {
         this.x = x;
         this.y = y;
+        this.vx = 0; // Add velocity for physics
+        this.vy = 0;
         this.color = color;
         this.isPlayer = isPlayer;
         this.playerIndex = playerIndex;
         this.angle = 0; // Tank body rotation (fixed for artillery)
-        this.turretAngle = Math.PI / 4; // Start aiming at 45 degrees
-        this.power = 50; // Artillery power (0-100)
+        this.turretAngle = -Math.PI/2; // Start pointing straight up (center of shooting arc)
+        this.power = 50; // Start at 50% power
         this.health = CONFIG.MAX_HEALTH;
         this.alive = true;
         this.kills = 0;
@@ -905,19 +907,35 @@
         this.fireRate = 1000; // Artillery has slower rate of fire
         this.hasShot = false; // Track if player has shot this turn
         
-        // Physics properties
-        this.vx = 0;
-        this.vy = 0;
-        this.onGround = false;
+        // Parachute drop properties
+        this.dropping = dropping || false;
+        this.parachuteOpen = dropping || false;
+        this.landed = !dropping; // If not dropping, already landed
+        
+        console.log(`🪂 Tank created: dropping=${this.dropping}, parachuteOpen=${this.parachuteOpen}, landed=${this.landed}`);
         
         // AI properties
         this.aiTarget = null;
         this.aiThinkTimer = 0;
         this.aiAction = 'aiming';
+        
+        // Debug tank creation
+        const playerType = isPlayer ? "HUMAN" : "AI";
+        console.log(`🚗 Tank created: ${playerType} at (${x}, ${y}) color: ${color}`);
       }
 
       update() {
+        // Don't update if tank is dead
         if (!this.alive) return;
+        
+        // Don't update if game is over
+        if (!gameState.running) return;
+        
+        // Handle parachute drop physics
+        if (this.dropping && !this.landed) {
+          this.updateParachuteDrop();
+          return; // Don't update normal behavior while dropping
+        }
 
         if (this.isPlayer) {
           this.updatePlayer();
@@ -925,7 +943,70 @@
           this.updateAI();
         }
         
-        // Tanks are stationary in artillery mode - no physics needed
+        // Apply gravity so tanks fall when terrain is destroyed
+        this.applyPhysics();
+        this.checkTerrainCollision();
+      }
+
+      updateParachuteDrop() {
+        // Parachute drop physics - slower descent
+        const parachuteGravity = 0.05; // Much slower than normal gravity (reduced from 0.1)
+        const terminalVelocity = 1; // Maximum falling speed with parachute (reduced from 2)
+        
+        // Apply gentle downward acceleration
+        this.vy += parachuteGravity;
+        
+        // Limit falling speed (parachute effect)
+        if (this.vy > terminalVelocity) {
+          this.vy = terminalVelocity;
+        }
+        
+        // Add slight horizontal drift (wind effect)
+        const windDrift = (Math.sin(Date.now() * 0.001) * 0.1);
+        this.vx = windDrift;
+        
+        // Update position
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // Check if we've hit the terrain
+        const terrainHeight = getTerrainHeight(this.x);
+        if (this.y + CONFIG.TANK_SIZE/2 >= terrainHeight) {
+          // Land on terrain
+          this.y = terrainHeight - CONFIG.TANK_SIZE;
+          this.vx = 0;
+          this.vy = 0;
+          this.dropping = false;
+          this.parachuteOpen = false;
+          this.landed = true;
+          
+          console.log(`🪂 Tank ${this.playerIndex} landed at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
+          
+          // Check if all tanks have landed
+          this.checkAllTanksLanded();
+        }
+        
+        // Keep tank on screen horizontally
+        this.x = Math.max(CONFIG.TANK_SIZE, Math.min(CONFIG.CANVAS_WIDTH - CONFIG.TANK_SIZE, this.x));
+      }
+      
+      checkAllTanksLanded() {
+        const allLanded = gameState.players.every(tank => tank.landed);
+        if (allLanded) {
+          console.log('🎯 All tanks have landed! Game can begin.');
+          
+          // Start the game properly
+          gameState.turnPhase = 'aiming';
+          gameState.currentPlayer = 0; // Start with first player
+          
+          // Reset all tanks for gameplay
+          gameState.players.forEach(tank => {
+            tank.hasShot = false;
+            tank.aiThinkTimer = 0;
+          });
+          
+          console.log('🎮 Game started! First turn: Player 1');
+        }
       }
 
       updatePlayer() {
@@ -936,10 +1017,10 @@
         
         // Artillery controls: Adjust angle and power
         if (input.left) {
-          this.turretAngle -= 0.02; // Decrease angle (aim more left/down)
+          this.turretAngle -= 0.02; // Decrease angle (aim more left)
         }
         if (input.right) {
-          this.turretAngle += 0.02; // Increase angle (aim more right/up)
+          this.turretAngle += 0.02; // Increase angle (aim more right)
         }
         
         if (input.up) {
@@ -949,8 +1030,13 @@
           this.power = Math.max(10, this.power - 1); // Decrease power
         }
         
-        // Clamp turret angle to reasonable range (-π/6 to 7π/6 - can't aim backwards)
-        this.turretAngle = Math.max(-Math.PI/3, Math.min(4*Math.PI/3, this.turretAngle));
+        // Clamp turret angle to reasonable range (left to right with upward arc - pointing to sky)
+        this.turretAngle = Math.max(-Math.PI/2 - Math.PI/2.4, Math.min(-Math.PI/2 + Math.PI/2.4, this.turretAngle));
+        
+        // For AI, allow more flexible aiming angles
+        if (!this.isPlayer) {
+          this.turretAngle = Math.max(-Math.PI/6, Math.min(5*Math.PI/6, this.turretAngle));
+        }
 
         // Firing
         if (input.fire && Date.now() - this.lastFired > this.fireRate) {
@@ -960,122 +1046,213 @@
       }
 
       updateAI() {
-        // AI should only act during their turn or when no players are alive
-        if (gameState.players.length > 0 && gameState.currentPlayer < gameState.players.length) {
-          // If it's a player's turn, AI should not act
-          return;
+        // Only update AI during their turn in artillery mode
+        if (this.isPlayer || gameState.currentPlayer !== this.playerIndex) return;
+        
+        // Exit if game is over
+        if (!gameState.running) return;
+        
+        // Exit if AI has already shot this turn
+        if (this.hasShot) return;
+        
+        // Debug: Log AI turn status
+        if (this.aiThinkTimer === 0) {
+          console.log(`🤖 AI ${this.playerIndex} starting turn, hasShot: ${this.hasShot}`);
         }
         
-        // Don't act if game is not running
-        if (!gameState.running) {
-          return;
+        // Debug: Log AI phases occasionally
+        if (this.aiThinkTimer % 20 === 0) {
+          console.log(`🤖 AI ${this.playerIndex} phase: ${this.aiThinkTimer < 30 ? 'Phase 1' : this.aiThinkTimer < 80 ? 'Phase 2' : 'Phase 3'}, target: ${this.aiTarget ? 'Found' : 'None'}, hasShot: ${this.hasShot}`);
         }
         
         this.aiThinkTimer++;
         
-        if (this.aiThinkTimer % 60 === 0) { // Think every second
-          // Find nearest target - only target alive players
-          let nearestDistance = Infinity;
-          this.aiTarget = null;
-          
-          for (const tank of gameState.players) {
-            if (tank.alive) {
-              const distance = Math.hypot(tank.x - this.x, tank.y - this.y);
-              if (distance < nearestDistance) {
-                nearestDistance = distance;
+                // AI takes time to think and aim
+        if (this.aiThinkTimer < 30) {
+          // Phase 1: AI "looks around" and adjusts aim gradually
+          if (!this.aiTarget) {
+            // Find human player targets first, then other AI tanks if no humans available
+            let foundTarget = false;
+            for (const tank of gameState.players) {
+              if (tank.alive && tank.isPlayer) {
                 this.aiTarget = tank;
+                foundTarget = true;
+                break;
               }
             }
-          }
-          
-          // If no alive players, target other AI tanks (for survival mode)
-          if (!this.aiTarget) {
-            for (const tank of gameState.aiTanks) {
-              if (tank !== this && tank.alive) {
-                const distance = Math.hypot(tank.x - this.x, tank.y - this.y);
-                if (distance < nearestDistance) {
-                  nearestDistance = distance;
+            
+            // If no human targets found, target other AI tanks
+            if (!foundTarget) {
+              for (const tank of gameState.players) {
+                if (tank.alive && tank !== this) {
                   this.aiTarget = tank;
+                  foundTarget = true;
+                  break;
                 }
               }
             }
+            
+            // Debug: Log target found
+            if (foundTarget) {
+              console.log(`🎯 AI ${this.playerIndex} targeting ${this.aiTarget.isPlayer ? 'HUMAN' : 'AI'} tank at (${this.aiTarget.x}, ${this.aiTarget.y})`);
+            }
           }
           
-          // Clear target if it's no longer alive
+          // Validate current target - if dead, clear it
           if (this.aiTarget && !this.aiTarget.alive) {
+            console.log(`💀 AI ${this.playerIndex} target died, clearing target`);
             this.aiTarget = null;
+            return; // Wait for next frame to find new target
           }
           
-          // Decide action
-          if (this.aiTarget && nearestDistance < 300) {
-            this.aiAction = Math.random() < 0.7 ? 'attack' : 'move';
-          } else {
-            this.aiAction = 'patrol';
-          }
-        }
-
-        // Execute AI action
-        this.executeAIAction();
-      }
-
-      executeAIAction() {
-        // AI should only fire during their turn or when no players are alive
-        const canFire = gameState.players.length === 0 || 
-                       (gameState.currentPlayer >= gameState.players.length && 
-                        gameState.aiTanks.indexOf(this) === gameState.currentPlayer - gameState.players.length);
-        
-        switch (this.aiAction) {
-          case 'attack':
-            if (this.aiTarget && this.aiTarget.alive) {
-              // Aim at target
-              this.turretAngle = Math.atan2(this.aiTarget.y - this.y, this.aiTarget.x - this.x);
-              
-              // Fire if aimed and it's our turn
-              if (canFire && Date.now() - this.lastFired > this.fireRate * 1.5) {
-                this.fire();
-                this.endTurn();
-              }
-              
-              // Move towards or away from target
-              const distance = Math.hypot(this.aiTarget.x - this.x, this.aiTarget.y - this.y);
-              if (distance > 200) {
-                // Move closer
-                this.angle = Math.atan2(this.aiTarget.y - this.y, this.aiTarget.x - this.x);
-                this.vx += Math.cos(this.angle) * 0.3;
-                this.vy += Math.sin(this.angle) * 0.3;
-              } else if (distance < 100) {
-                // Move away
-                this.angle = Math.atan2(this.y - this.aiTarget.y, this.x - this.aiTarget.x);
-                this.vx += Math.cos(this.angle) * 0.2;
-                this.vy += Math.cos(this.angle) * 0.2;
-              }
+          if (this.aiTarget) {
+            // Calculate distance to target
+            const dx = this.aiTarget.x - this.x;
+            const dy = this.aiTarget.y - this.y;
+            const distance = Math.hypot(dy, dx);
+            
+            // For close targets, aim more directly; for far targets, use ballistic arcs
+            if (distance < 200) {
+              // Close range: aim directly
+              const targetAngle = Math.atan2(dy, dx);
+              const angleDiff = targetAngle - this.turretAngle;
+              let shortestAngle = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+              this.turretAngle += shortestAngle * 0.05;
             } else {
-              // Target is dead, switch to patrol
-              this.aiAction = 'patrol';
+              // Long range: start with ballistic arc
+              const ballisticSolution = this.calculateBallisticSolution(this.aiTarget.x, this.aiTarget.y);
+              if (ballisticSolution) {
+                const angleDiff = ballisticSolution.angle - this.turretAngle;
+                let shortestAngle = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+                this.turretAngle += shortestAngle * 0.05;
+              }
+            }
+            
+            // Clamp turret angle (AI uses same artillery system as player)
+            this.turretAngle = Math.max(-Math.PI/2 - Math.PI/2.4, Math.min(-Math.PI/2 + Math.PI/2.4, this.turretAngle));
+            this.power = Math.max(10, Math.min(100, this.power));
+          }
+        } else if (this.aiThinkTimer < 80) {
+          // Phase 2: Calculate ballistic solution
+          if (this.aiTarget) {
+            // Validate target is still alive
+            if (!this.aiTarget.alive) {
+              console.log(`💀 AI ${this.playerIndex} target died during Phase 2, clearing target`);
               this.aiTarget = null;
+              this.aiThinkTimer = 0; // Reset to Phase 1
+              return;
             }
-            break;
             
-          case 'patrol':
-            // Random movement
-            if (Math.random() < 0.02) {
-              this.angle += (Math.random() - 0.5) * 0.2;
+            const solution = this.calculateBallisticSolution(this.aiTarget.x, this.aiTarget.y);
+            if (solution) {
+              // Gradually adjust to the calculated solution
+              const angleDiff = solution.angle - this.turretAngle;
+              let shortestAngle = ((angleDiff + Math.PI) % (2 * Math.PI)) - Math.PI;
+              this.turretAngle += shortestAngle * 0.1;
+              
+              // Set power towards calculated value
+              this.power += (solution.power - this.power) * 0.1;
+              
+              // Clamp values (AI uses same artillery system as player)
+              this.turretAngle = Math.max(-Math.PI/2 - Math.PI/2.4, Math.min(-Math.PI/2 + Math.PI/2.4, this.turretAngle));
+              this.power = Math.max(10, Math.min(100, this.power));
             }
-            this.vx += Math.cos(this.angle) * 0.1;
-            this.vy += Math.sin(this.angle) * 0.1;
-            break;
+          }
+        } else if (this.aiThinkTimer > 100 && !this.hasShot) {
+          // Phase 3: Fire after final adjustment
+          console.log(`🎯 AI ${this.playerIndex} entering Phase 3 - ready to fire!`);
+          if (this.aiTarget && !this.hasShot) { // Double-check hasShot flag
+            // Validate target is still alive before firing
+            if (!this.aiTarget.alive) {
+              console.log(`💀 AI ${this.playerIndex} target died before firing, clearing target`);
+              this.aiTarget = null;
+              this.aiThinkTimer = 0; // Reset to Phase 1
+              return;
+            }
             
-          case 'move':
-            // Evasive maneuvers
-            this.angle += Math.sin(this.aiThinkTimer * 0.1) * 0.05;
-            this.vx += Math.cos(this.angle) * 0.4;
-            this.vy += Math.sin(this.angle) * 0.4;
-            break;
+            // Add some randomness for imperfect AI (skill level)
+            const aimError = (Math.random() - 0.5) * 0.15; // Reduced error for better AI
+            const powerError = (Math.random() - 0.5) * 10;
+            
+            this.turretAngle += aimError;
+            this.power += powerError;
+            
+            // Clamp final values (AI uses same artillery system as player)
+            this.turretAngle = Math.max(-Math.PI/2 - Math.PI/2.4, Math.min(-Math.PI/2 + Math.PI/2.4, this.turretAngle));
+            this.power = Math.max(10, Math.min(100, this.power));
+            
+            // Fire at target!
+            console.log(`🎯 AI ${this.playerIndex} FIRING at target! Angle: ${this.turretAngle.toFixed(2)}, Power: ${this.power.toFixed(1)}`);
+            this.fire();
+            this.endTurn();
+          } else {
+            this.endTurn();
+          }
+        } else if (this.aiThinkTimer > 150) {
+          // Fallback: end turn if something went wrong
+          this.endTurn();
         }
       }
 
       getInput() {
         return input.getPlayerInput(this.playerIndex);
+      }
+
+      calculateBallisticSolution(targetX, targetY) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const gravity = CONFIG.GRAVITY;
+        
+        // Try different angles to find a solution
+        for (let power = 30; power <= 100; power += 5) {
+          for (let angle = -Math.PI/2 - Math.PI/2.4; angle <= -Math.PI/2 + Math.PI/2.4; angle += 0.1) {
+            const velocity = (power / 100) * CONFIG.BULLET_SPEED;
+            const vx = Math.cos(angle) * velocity;
+            const vy = Math.sin(angle) * velocity;
+            
+            // Simulate trajectory to see if it hits target
+            let x = this.x;
+            let y = this.y;
+            let vxCurrent = vx;
+            let vyCurrent = vy;
+            
+            for (let step = 0; step < 200; step++) {
+              // Apply physics
+              vyCurrent += gravity;
+              vxCurrent += gameState.wind * 0.01;
+              x += vxCurrent;
+              y += vyCurrent;
+              
+              // Check if we're close to target
+              const distanceToTarget = Math.hypot(x - targetX, y - targetY);
+              if (distanceToTarget < 30) { // Within 30 pixels is "close enough"
+                return { angle, power };
+              }
+              
+              // Check if we hit terrain or went off screen
+              if (y >= getTerrainHeight(x) || x < 0 || x > CONFIG.CANVAS_WIDTH || y > CONFIG.CANVAS_HEIGHT) {
+                break;
+              }
+            }
+          }
+        }
+        
+        // Fallback: use ballistic arc instead of direct line
+        // Calculate a reasonable arc that accounts for gravity
+        const distance = Math.hypot(dx, dy);
+        const gravityValue = CONFIG.GRAVITY;
+        
+        // Use a formula for projectile motion: angle = arctan(dy/dx + g*distance/(2*v0^2))
+        // This gives a more realistic arc trajectory
+        const baseAngle = Math.atan2(dy, dx);
+        const velocity = 50; // Medium velocity
+        const gravityCorrection = (gravityValue * distance) / (2 * velocity * velocity);
+        const arcAngle = baseAngle + gravityCorrection;
+        
+        return {
+          angle: arcAngle,
+          power: 70
+        };
       }
 
       updateTurretAiming() {
@@ -1125,24 +1302,18 @@
       }
 
       applyPhysics() {
-        // Apply friction (reduced for better responsiveness)
-        this.vx *= 0.88; // Less friction = more responsive
-        this.vy *= 0.88;
+        // In artillery mode, tanks are stationary except for falling when terrain is destroyed
+        // Heavy friction to prevent sliding
+        this.vx *= 0.3; // Very high friction - tanks don't slide around
         
         // Apply gravity
         if (!this.onGround) {
           this.vy += CONFIG.GRAVITY;
+        } else {
+          this.vy = 0; // Stop falling when on ground
         }
         
-        // Limit velocity
-        const maxSpeed = CONFIG.TANK_SPEED;
-        const speed = Math.hypot(this.vx, this.vy);
-        if (speed > maxSpeed) {
-          this.vx = (this.vx / speed) * maxSpeed;
-          this.vy = (this.vy / speed) * maxSpeed;
-        }
-        
-        // Update position
+        // Update position (mainly for falling)
         this.x += this.vx;
         this.y += this.vy;
         
@@ -1193,13 +1364,15 @@
       takeDamage(damage) {
         this.health -= damage;
         if (this.health <= 0) {
+          this.health = 0; // Ensure health doesn't go negative
           this.alive = false;
           this.explode();
           
-          // If this was the current player's turn, end the turn
-          if (gameState.currentPlayer < gameState.players.length && 
-              gameState.players[gameState.currentPlayer] === this) {
-            setTimeout(() => gameState.nextTurn(), 500);
+          // If this was the current player's turn, end the turn immediately
+          if (gameState.currentPlayer === this.playerIndex && gameState.turnPhase === 'aiming') {
+            console.log(`💀 Current player ${this.playerIndex} died, ending turn immediately`);
+            gameState.turnPhase = 'changing';
+            setTimeout(() => gameState.nextTurn(), 1000);
           }
         }
         audio.playHit();
@@ -1213,28 +1386,86 @@
 
       render(ctx) {
         if (!this.alive) return;
+        
+        // GUARD: Skip rendering if tank has invalid position
+        if (isNaN(this.x) || isNaN(this.y)) {
+          console.warn(`⚠️ Tank has invalid position (${this.x}, ${this.y}), skipping render`);
+          return;
+        }
+
+        // Debug: Log tank rendering position occasionally
+        if (Math.random() < 0.01) { // Log 1% of the time to avoid spam
+          console.log(`🎨 Rendering tank at (${this.x}, ${this.y}), alive: ${this.alive}`);
+        }
 
         ctx.save();
         ctx.translate(this.x, this.y);
         
-        // Draw tank body
-        ctx.rotate(this.angle);
-        ctx.fillStyle = this.color;
-        ctx.fillRect(-CONFIG.TANK_SIZE / 2, -CONFIG.TANK_SIZE / 3, CONFIG.TANK_SIZE, CONFIG.TANK_SIZE * 2/3);
+        // Draw parachute if dropping
+        if (this.dropping && this.parachuteOpen) {
+          this.renderParachute(ctx);
+        }
         
-        // Draw tracks
+        // Draw cannon base (circular)
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, CONFIG.TANK_SIZE / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw cannon base details
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw cannon platform (rectangular base)
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-CONFIG.TANK_SIZE / 2 - 2, 0, CONFIG.TANK_SIZE + 4, CONFIG.TANK_SIZE / 3);
+        
+        // Draw tracks/wheels
         ctx.fillStyle = '#333';
-        ctx.fillRect(-CONFIG.TANK_SIZE / 2, -CONFIG.TANK_SIZE / 2, CONFIG.TANK_SIZE, 4);
-        ctx.fillRect(-CONFIG.TANK_SIZE / 2, CONFIG.TANK_SIZE / 2 - 4, CONFIG.TANK_SIZE, 4);
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.arc(i * (CONFIG.TANK_SIZE / 3), CONFIG.TANK_SIZE / 3, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
         
         ctx.restore();
         
-        // Draw turret
+        // Draw cannon barrel
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.turretAngle);
+        
+        // Draw barrel with better proportions
+        ctx.fillStyle = '#666'; // Darker metal color
+        ctx.fillRect(0, -6, CONFIG.TANK_SIZE / 2 + 16, 12); // Thicker barrel
+        
+        // Draw barrel rings/bands for detail
+        ctx.fillStyle = '#444';
+        for (let i = 0; i <= 3; i++) {
+          const x = i * (CONFIG.TANK_SIZE / 2 + 16) / 3;
+          ctx.fillRect(x, -7, 2, 14);
+        }
+        
+        // Draw barrel tip with muzzle flare
+        ctx.fillStyle = '#333';
+        ctx.fillRect(CONFIG.TANK_SIZE / 2 + 16, -5, 6, 10);
+        
+        // Draw muzzle opening
+        ctx.fillStyle = '#000';
+        ctx.fillRect(CONFIG.TANK_SIZE / 2 + 22, -4, 2, 8);
+        
+        // Draw turret base (circular platform)
         ctx.fillStyle = this.color;
-        ctx.fillRect(0, -3, CONFIG.TANK_SIZE / 2 + 8, 6);
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw turret base outline
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
         ctx.restore();
         
         // Draw health bar
@@ -1250,13 +1481,16 @@
           ctx.fillRect(this.x - barWidth / 2, this.y - CONFIG.TANK_SIZE / 2 - 10, barWidth * healthPercent, barHeight);
         }
         
-        // Draw aiming indicators for current player
-        if (this.isPlayer && gameState.currentPlayer === this.playerIndex && gameState.turnPhase === 'aiming') {
+        // Draw aiming indicators for current player (human or AI)
+        if (gameState.currentPlayer === this.playerIndex && gameState.turnPhase === 'aiming') {
           // Draw trajectory preview
           this.drawTrajectoryPreview(ctx);
           
           // Draw power indicator
           this.drawPowerIndicator(ctx);
+          
+          // Draw shooting angle range indicator
+          this.drawShootingAngleRange(ctx);
         }
       }
       
@@ -1295,6 +1529,61 @@
         ctx.restore();
       }
       
+      renderParachute(ctx) {
+        // Draw parachute lines
+        ctx.strokeStyle = '#8B4513'; // Brown ropes
+        ctx.lineWidth = 1;
+        
+        // Draw lines from tank to parachute
+        const parachuteOffset = -40; // Parachute above tank
+        const parachuteWidth = 30;
+        
+        ctx.beginPath();
+        ctx.moveTo(-5, -5); // Left side of tank
+        ctx.lineTo(-parachuteWidth/2, parachuteOffset);
+        ctx.moveTo(5, -5); // Right side of tank
+        ctx.lineTo(parachuteWidth/2, parachuteOffset);
+        ctx.moveTo(0, -8); // Center of tank
+        ctx.lineTo(0, parachuteOffset + 5);
+        ctx.stroke();
+        
+        // Draw parachute canopy
+        ctx.fillStyle = '#FF6B6B'; // Red parachute
+        ctx.strokeStyle = '#CC0000';
+        ctx.lineWidth = 2;
+        
+        // Draw proper parachute canopy as a realistic parachute shape
+        ctx.beginPath();
+        
+        // Draw the main canopy as a curved parachute shape
+        const canopyWidth = parachuteWidth;
+        const canopyHeight = parachuteWidth * 0.6; // Parachute height is 60% of width
+        
+        // Draw the main canopy curve (like a real parachute)
+        ctx.moveTo(-canopyWidth/2, parachuteOffset);
+        ctx.quadraticCurveTo(0, parachuteOffset - canopyHeight, canopyWidth/2, parachuteOffset);
+        ctx.lineTo(canopyWidth/2, parachuteOffset + 5);
+        ctx.quadraticCurveTo(0, parachuteOffset + 10, -canopyWidth/2, parachuteOffset + 5);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add parachute lines connecting to the tank
+        ctx.strokeStyle = '#CC0000';
+        ctx.lineWidth = 1;
+        for (let i = -2; i <= 2; i++) {
+          const lineX = i * (canopyWidth/6);
+          ctx.beginPath();
+          ctx.moveTo(lineX, parachuteOffset + 5);
+          ctx.lineTo(lineX * 0.3, 0); // Lines converge slightly toward center
+          ctx.stroke();
+        }
+        
+        // Add some depth with a darker outline
+        ctx.strokeStyle = '#CC0000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      
       drawPowerIndicator(ctx) {
         // Power bar above tank
         const barWidth = 60;
@@ -1314,6 +1603,55 @@
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText(`${this.power}%`, this.x, barY - 5);
+      }
+      
+      drawShootingAngleRange(ctx) {
+        // Draw shooting angle range indicator
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Draw the available shooting angle range
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        
+        // Draw left boundary (minimum angle - left direction)
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const leftAngle = -Math.PI/2 - Math.PI/2.4; // 75 degrees left of straight up
+        const leftX = Math.cos(leftAngle) * 60;
+        const leftY = Math.sin(leftAngle) * 60;
+        ctx.lineTo(leftX, leftY);
+        ctx.stroke();
+        
+        // Draw right boundary (maximum angle - right direction)
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const rightAngle = -Math.PI/2 + Math.PI/2.4; // 75 degrees right of straight up
+        const rightX = Math.cos(rightAngle) * 60;
+        const rightY = Math.sin(rightAngle) * 60;
+        ctx.lineTo(rightX, rightY);
+        ctx.stroke();
+        
+        // Draw arc showing the range
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(0, 0, 60, leftAngle, rightAngle);
+        ctx.stroke();
+        
+        // Draw current aim line
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const currentX = Math.cos(this.turretAngle) * 60;
+        const currentY = Math.sin(this.turretAngle) * 60;
+        ctx.lineTo(currentX, currentY);
+        ctx.stroke();
+        
+        ctx.restore();
       }
     }
 
@@ -1355,6 +1693,7 @@
         // Check terrain collision
         const terrainY = getTerrainHeight(this.x);
         if (this.y >= terrainY) {
+          console.log(`Bullet hit terrain at (${this.x}, ${this.y}), terrain height: ${terrainY}`);
           this.explode();
           return;
         }
@@ -1382,8 +1721,10 @@
       }
 
       explode() {
+        console.log(`Bullet exploding at (${this.x}, ${this.y})`);
         this.alive = false;
         createExplosion(this.x, this.y, CONFIG.EXPLOSION_SIZE / 2);
+        console.log(`Calling destroyTerrain with radius ${CONFIG.TERRAIN_DESTRUCTION_RADIUS}`);
         destroyTerrain(this.x, this.y, CONFIG.TERRAIN_DESTRUCTION_RADIUS);
         audio.playExplosion();
       }
@@ -1507,52 +1848,137 @@
       const width = CONFIG.CANVAS_WIDTH;
       const baseHeight = CONFIG.CANVAS_HEIGHT - CONFIG.TERRAIN_HEIGHT;
       
+      // Create more varied, random terrain
+      let currentHeight = baseHeight;
       for (let x = 0; x < width; x++) {
-        // Create rolling hills
-        const hillHeight = Math.sin(x * 0.01) * 30 + Math.sin(x * 0.005) * 20;
-        const terrainHeight = baseHeight + hillHeight;
-        gameState.terrain[x] = Math.max(baseHeight - 50, terrainHeight);
-      }
-    }
-
-    function getTerrainHeight(x) {
-      const clampedX = Math.max(0, Math.min(CONFIG.CANVAS_WIDTH - 1, Math.floor(x)));
-      return gameState.terrain[clampedX] || CONFIG.CANVAS_HEIGHT;
-    }
-
-    function destroyTerrain(centerX, centerY, radius) {
-      for (let x = centerX - radius; x <= centerX + radius; x++) {
-        if (x >= 0 && x < CONFIG.CANVAS_WIDTH) {
-          const distance = Math.abs(x - centerX);
-          if (distance <= radius) {
-            const factor = 1 - (distance / radius);
-            const destructionHeight = factor * radius;
-            gameState.terrain[x] = Math.max(gameState.terrain[x], centerY + destructionHeight);
-          }
+        // Multiple layers of noise for realistic mountains
+        const wave1 = Math.sin(x * 0.008) * 40;      // Large hills
+        const wave2 = Math.sin(x * 0.03) * 25;       // Medium ridges  
+        const wave3 = Math.sin(x * 0.08) * 15;       // Small bumps
+        const noise = (Math.random() - 0.5) * 10;    // Random variation
+        
+        // Add some steep cliffs and valleys
+        const cliffNoise = Math.sin(x * 0.004) * 60;
+        
+        const terrainHeight = baseHeight + wave1 + wave2 + wave3 + noise + cliffNoise;
+        
+        // Smooth terrain slightly to avoid extreme spikes
+        if (x > 0) {
+          const smoothing = (currentHeight + terrainHeight) / 2;
+          gameState.terrain[x] = Math.max(baseHeight - 100, Math.min(baseHeight + 80, smoothing));
+          currentHeight = gameState.terrain[x];
+        } else {
+          gameState.terrain[x] = Math.max(baseHeight - 100, Math.min(baseHeight + 80, terrainHeight));
+          currentHeight = gameState.terrain[x];
         }
       }
     }
 
-    function createMuzzleFlash(x, y) {
-      // Create muzzle flash particles instead of DOM elements
-      for (let i = 0; i < 8; i++) {
-        const angle = (Math.PI * 2 * i) / 8;
-        const speed = 2 + Math.random() * 3;
-        const vx = Math.cos(angle) * speed;
-        const vy = Math.sin(angle) * speed;
-        const life = 10 + Math.random() * 20;
-        
-        gameState.particles.push({
-          x: x,
-          y: y,
-          vx: vx,
-          vy: vy,
-          life: life,
-          maxLife: life,
-          color: '#ffff00',
-          size: 2 + Math.random() * 3
-        });
+    function generateTankDropPositions(mode) {
+      console.log('🪂 generateTankDropPositions() called with mode:', mode);
+      
+      const positions = [];
+      
+      // Determine how many tanks we need
+      let tankCount = 1; // Always at least one human player
+      if (mode === 'versus') {
+        tankCount = 2; // Human vs Human (no AI in versus mode for now)
+      } else if (mode === 'single') {
+        tankCount = 3; // 1 human + 2 AI
+      } else if (mode === 'survival') {
+        tankCount = 4; // 1 human + 3 AI
       }
+      
+      console.log(`🪂 Creating ${tankCount} parachute drop positions for ${mode} mode`);
+      
+      // Generate random X positions with minimum distance between tanks
+      const margin = 100;
+      const availableWidth = CONFIG.CANVAS_WIDTH - 2 * margin;
+      const minDistance = 150; // Minimum distance between tanks
+      
+      for (let i = 0; i < tankCount; i++) {
+        let attempts = 0;
+        let x, validPosition = false;
+        
+        // Try to find a valid position that's not too close to existing tanks
+        while (!validPosition && attempts < 50) {
+          x = margin + Math.random() * availableWidth;
+          
+          // Check distance from existing tanks
+          validPosition = positions.every(pos => Math.abs(pos.x - x) >= minDistance);
+          attempts++;
+        }
+        
+        // If we couldn't find a good position, use a fallback
+        if (!validPosition) {
+          x = margin + (i * availableWidth / Math.max(1, tankCount - 1));
+          console.warn(`⚠️ Using fallback position for tank ${i}: x=${x}`);
+        }
+        
+        // Start tanks high above the screen for parachute drop
+        const y = -50; // Start above the visible area
+        
+        console.log(`🪂 Tank ${i} drop position: x=${x.toFixed(1)}, y=${y} (will fall to terrain)`);
+        positions.push({ x, y, dropping: true }); // Add dropping flag
+      }
+      
+      console.log(`🪂 Generated ${positions.length} parachute drop positions:`, positions);
+      return positions;
+    }
+
+    function getTerrainHeight(x) {
+      const clampedX = Math.max(0, Math.min(CONFIG.CANVAS_WIDTH - 1, Math.floor(x)));
+      const height = gameState.terrain[clampedX];
+      
+      if (height === undefined || height === null) {
+        console.warn(`⚠️ No terrain height at x=${x}, using default`);
+        return CONFIG.CANVAS_HEIGHT - 100; // Default terrain height
+      }
+      
+      return height;
+    }
+
+    function destroyTerrain(centerX, centerY, radius) {
+      console.log(`🎯 Destroying terrain at (${Math.round(centerX)}, ${Math.round(centerY)}) with radius ${radius}`);
+      
+      let modified = 0;
+      for (let x = Math.floor(centerX - radius); x <= Math.ceil(centerX + radius); x++) {
+        if (x >= 0 && x < CONFIG.CANVAS_WIDTH) {
+          const distance = Math.abs(x - centerX);
+          if (distance <= radius) {
+            const factor = 1 - (distance / radius);
+            const oldHeight = gameState.terrain[x];
+            
+            // Create a crater: in canvas coordinates, higher Y = lower on screen
+            // So to create a crater (hole), we need to INCREASE the Y value
+            const craterDepth = factor * radius;
+            const craterBottomY = Math.max(centerY, oldHeight) + craterDepth;
+            
+            // Ensure we don't go below canvas bottom
+            const newHeight = Math.min(craterBottomY, CONFIG.CANVAS_HEIGHT - 10);
+            
+            if (newHeight > oldHeight) {
+              gameState.terrain[x] = newHeight;
+              modified++;
+            }
+          }
+        }
+      }
+      console.log(`💥 Modified ${modified} terrain points`);
+    }
+
+    function createMuzzleFlash(x, y) {
+      const flash = document.createElement('div');
+      flash.className = 'muzzle-flash';
+      flash.style.left = x + 'px';
+      flash.style.top = y + 'px';
+      document.getElementById('gameContainer').appendChild(flash);
+      
+      setTimeout(() => {
+        if (flash.parentNode) {
+          flash.parentNode.removeChild(flash);
+        }
+      }, 100);
     }
 
     function createExplosion(x, y, size) {
@@ -1561,32 +1987,49 @@
 
     // Game functions
     function initializeGame() {
-      // Generate terrain
+      // Generate terrain first
       generateTerrain();
+      console.log('🏔️ Terrain generated');
       
-      // Create players
+      // Create players with randomized positions
       gameState.players = [];
-      const player1X = 200;
-      const player1Y = getTerrainHeight(player1X) - CONFIG.TANK_SIZE / 2;
-      gameState.players.push(new Tank(player1X, player1Y, CONFIG.COLORS.player1, true, 0));
+      gameState.aiTanks = [];
+      
+      const positions = generateTankDropPositions(gameState.mode);
+      console.log('🎯 Tank positions:', positions);
+      
+      // DEBUG: Check for NaN positions
+      positions.forEach((pos, i) => {
+        console.log(`🔍 Position ${i}: x=${pos.x} (isNaN: ${isNaN(pos.x)}), y=${pos.y} (isNaN: ${isNaN(pos.y)})`);
+      });
+      
+      // Create human player(s)
+      const player1Pos = positions[0];
+      console.log(`👤 Creating human player at (${player1Pos.x}, ${player1Pos.y})`);
+      gameState.players.push(new Tank(player1Pos.x, player1Pos.y, CONFIG.COLORS.player1, true, 0, player1Pos.dropping));
       
       if (gameState.mode === 'versus') {
-        const player2X = CONFIG.CANVAS_WIDTH - 200;
-        const player2Y = getTerrainHeight(player2X) - CONFIG.TANK_SIZE / 2;
-        gameState.players.push(new Tank(player2X, player2Y, CONFIG.COLORS.player2, true, 1));
+        const player2Pos = positions[1];
+        gameState.players.push(new Tank(player2Pos.x, player2Pos.y, CONFIG.COLORS.player2, true, 1, player2Pos.dropping));
         document.getElementById('player2Panel').style.display = 'block';
+        
+        // Create AI tanks for remaining positions
+        for (let i = 2; i < positions.length; i++) {
+          const pos = positions[i];
+          const aiTank = new Tank(pos.x, pos.y, CONFIG.COLORS.ai, false, i, pos.dropping);
+          gameState.aiTanks.push(aiTank);
+          gameState.players.push(aiTank);
+        }
       } else {
         document.getElementById('player2Panel').style.display = 'none';
-      }
-      
-      // Create AI tanks
-      gameState.aiTanks = [];
-      if (gameState.mode === 'single' || gameState.mode === 'survival') {
-        const aiCount = gameState.mode === 'survival' ? 3 : 2;
-        for (let i = 0; i < aiCount; i++) {
-          const x = 400 + i * 200;
-          const y = getTerrainHeight(x) - CONFIG.TANK_SIZE / 2;
-          gameState.aiTanks.push(new Tank(x, y, CONFIG.COLORS.ai, false));
+        
+        // Create AI tanks for remaining positions
+        for (let i = 1; i < positions.length; i++) {
+          const pos = positions[i];
+          console.log(`🤖 Creating AI tank ${i} at (${pos.x}, ${pos.y})`);
+          const aiTank = new Tank(pos.x, pos.y, CONFIG.COLORS.ai, false, i, pos.dropping);
+          gameState.aiTanks.push(aiTank);
+          gameState.players.push(aiTank);
         }
       }
       
@@ -1596,11 +2039,36 @@
       gameState.particles = [];
       gameState.gameTime = 0;
       
+      // Debug: Summary of game initialization
+      console.log(`🎮 Game initialized: ${gameState.players.length} total tanks`);
+      gameState.players.forEach((tank, i) => {
+        const type = tank.isPlayer ? "HUMAN" : "AI";
+        console.log(`  Tank ${i}: ${type} at (${tank.x.toFixed(1)}, ${tank.y.toFixed(1)})`);
+      });
+      
       updateHUD();
     }
 
     function updateGame() {
       if (!gameState.running || gameState.paused) return;
+
+      // Check if game should be over (only one player left alive)
+      const alivePlayers = gameState.players.filter(p => p.alive);
+      if (alivePlayers.length <= 1 && gameState.running) {
+        console.log(`🏆 Game Over detected in updateGame! ${alivePlayers.length === 1 ? 'Winner: ' + (alivePlayers[0].isPlayer ? 'HUMAN' : 'AI') + ' Player ' + (gameState.players.indexOf(alivePlayers[0]) + 1) : 'All players destroyed'}`);
+        console.log(`📊 Final alive count: ${alivePlayers.length}/${gameState.players.length}`);
+        endGame();
+        return;
+      }
+      
+      // Additional safety: if any tank has negative health, force them dead
+      gameState.players.forEach(tank => {
+        if (tank.health <= 0 && tank.alive) {
+          console.log(`⚠️ Tank ${tank.playerIndex} has ${tank.health} health but is marked alive, forcing death`);
+          tank.health = 0;
+          tank.alive = false;
+        }
+      });
 
       gameState.gameTime += gameState.gameSpeed;
 
@@ -1609,25 +2077,22 @@
       gameState.aiTanks.forEach(ai => ai.update());
       gameState.bullets.forEach(bullet => bullet.update());
       gameState.explosions.forEach(explosion => explosion.update());
-      
-      // Update particles
-      gameState.particles.forEach(particle => {
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-        particle.life--;
-        particle.vx *= 0.95; // Friction
-        particle.vy *= 0.95;
-      });
 
       // Remove dead entities
       gameState.bullets = gameState.bullets.filter(bullet => bullet.alive);
       gameState.explosions = gameState.explosions.filter(explosion => explosion.alive);
-      gameState.particles = gameState.particles.filter(particle => particle.life > 0);
 
       // Check for turn change if waiting and no bullets left
       if (gameState.turnPhase === 'waiting' && gameState.bullets.length === 0) {
         setTimeout(() => gameState.nextTurn(), 1000); // 1 second delay between turns
         gameState.turnPhase = 'changing';
+      }
+      
+      // Safety timeout: if waiting too long, force turn change
+      if (gameState.turnPhase === 'waiting' && gameState.gameTime % 5000 === 0) {
+        console.log('⚠️ Safety timeout: forcing turn change after 5 seconds');
+        gameState.turnPhase = 'changing';
+        setTimeout(() => gameState.nextTurn(), 1000);
       }
 
       // Check win conditions
@@ -1742,24 +2207,29 @@
       for (let x = 1; x < CONFIG.CANVAS_WIDTH; x++) {
         ctx.lineTo(x, gameState.terrain[x]);
       }
+      ctx.lineTo(CONFIG.CANVAS_WIDTH, gameState.terrain[CONFIG.CANVAS_WIDTH]);
       ctx.stroke();
+
+      // Debug: Draw test markers at known positions
+      // Removed debug markers - no more orange squares!
+      
+      // Tank rendering is now handled by Tank.render() method
+      // No more debug red squares!
 
       // Draw game entities
       gameState.explosions.forEach(explosion => explosion.render(ctx));
       gameState.bullets.forEach(bullet => bullet.render(ctx));
-      gameState.players.forEach(player => player.render(ctx));
-      gameState.aiTanks.forEach(ai => ai.render(ctx));
       
-      // Draw particles
-      gameState.particles.forEach(particle => {
-        ctx.save();
-        ctx.globalAlpha = particle.life / particle.maxLife;
-        ctx.fillStyle = particle.color;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      });
+      // Render all tanks (players array includes both human and AI tanks)
+      gameState.players.forEach(player => player.render(ctx));
+      
+      // Draw wind indicator
+      drawWindIndicator(ctx);
+      
+      // Debug: Show how many tanks we're trying to render
+      if (Math.random() < 0.01) { // Log occasionally
+        console.log(`🎨 Rendering ${gameState.players.length} tanks`);
+      }
     }
 
     function updateHUD() {
@@ -1840,65 +2310,65 @@
         return;
       }
       
-      // Find next alive participant (players first, then AI)
-      let nextFound = false;
+      // Find next alive player
+      let attempts = 0;
+      let nextPlayerFound = false;
       
-      // First try to find next alive player
-      do {
-        this.currentPlayer = (this.currentPlayer + 1) % this.players.length;
-        if (this.players[this.currentPlayer].alive) {
-          nextFound = true;
-          break;
-        }
-      } while (this.currentPlayer !== 0); // Don't loop infinitely
-      
-      // If no alive players found, move to AI turns
-      if (!nextFound) {
-        this.currentPlayer = this.players.length; // Start AI turns
-        // Find first alive AI tank
-        for (let i = 0; i < this.aiTanks.length; i++) {
-          if (this.aiTanks[i].alive) {
-            this.currentPlayer = this.players.length + i;
-            nextFound = true;
-            break;
-          }
-        }
-      }
-      
-      // If still no alive participants found, end game
-      if (!nextFound) {
+      // Check if game is over (only one player left alive)
+      const alivePlayers = this.players.filter(p => p.alive);
+      if (alivePlayers.length <= 1) {
+        console.log(`🏆 Game Over! ${alivePlayers.length === 1 ? 'Winner: ' + (alivePlayers[0].isPlayer ? 'HUMAN' : 'AI') + ' Player ' + (this.players.indexOf(alivePlayers[0]) + 1) : 'All players destroyed'}`);
+        console.log(`📊 Final stats: ${alivePlayers.length} alive out of ${this.players.length} total`);
+        this.players.forEach((p, i) => {
+          console.log(`  Tank ${i}: ${p.isPlayer ? 'HUMAN' : 'AI'} - Alive: ${p.alive}, Health: ${p.health}`);
+        });
         this.endGame();
         return;
       }
       
-      // Reset shot flag for new participant
-      if (this.currentPlayer < this.players.length) {
-        this.players[this.currentPlayer].hasShot = false;
-      } else {
-        this.aiTanks[this.currentPlayer - this.players.length].hasShot = false;
+      // Additional safety check: ensure we're not trying to cycle to a dead player
+      if (!this.players[this.currentPlayer].alive) {
+        console.log(`⚠️ Current player ${this.currentPlayer} is dead, forcing next turn`);
+        this.currentPlayer = (this.currentPlayer + 1) % this.players.length;
       }
       
+      do {
+        this.currentPlayer = (this.currentPlayer + 1) % this.players.length;
+        attempts++;
+        
+        // Prevent infinite loop if all players are dead
+        if (attempts > this.players.length) {
+          console.warn('⚠️ All players are dead, ending game');
+          this.endGame();
+          return;
+        }
+        
+        // Check if this player is alive
+        if (this.players[this.currentPlayer].alive) {
+          nextPlayerFound = true;
+        }
+      } while (!nextPlayerFound);
+      
+      // Reset shot flag and AI timer for new player
+      this.players[this.currentPlayer].hasShot = false;
+      this.players[this.currentPlayer].aiThinkTimer = 0; // Reset AI thinking
       this.turnPhase = 'aiming';
+      
+      // Debug: Show whose turn it is
+      const currentTank = this.players[this.currentPlayer];
+      const playerType = currentTank.isPlayer ? "HUMAN" : "AI";
+      console.log(`🎯 Turn ${this.currentPlayer + 1}: ${playerType} (${this.players.length} total players)`);
       
       // Generate new wind
       this.wind = (Math.random() - 0.5) * 10; // -5 to 5
     };
     
     gameState.getCurrentPlayer = function() {
-      if (this.currentPlayer < this.players.length) {
-        return this.players[this.currentPlayer];
-      } else {
-        return this.aiTanks[this.currentPlayer - this.players.length];
-      }
+      return this.players[this.currentPlayer];
     };
     
     gameState.getAlivePlayers = function() {
       return this.players.filter(p => p.alive);
-    };
-    
-    gameState.endGame = function() {
-      this.running = false;
-      this.checkGameOver();
     };
 
     // Game loop
@@ -1934,6 +2404,9 @@
       document.getElementById('pausedOverlay').style.display = 'none';
       document.getElementById('hud').style.display = 'flex';
       
+      // Set initial wind so indicator shows from start
+      gameState.wind = (Math.random() - 0.5) * 10; // -5 to 5
+      
       initializeGame();
       requestAnimationFrame(gameLoop);
     }
@@ -1968,6 +2441,11 @@
       });
     });
 
+    // Button event listeners
+    document.getElementById('startGameBtn').addEventListener('click', startGame);
+    document.getElementById('restartGameBtn').addEventListener('click', restartGame);
+    document.getElementById('showMenuBtn').addEventListener('click', showMenu);
+
     // Initialize
     showMenu();
     
@@ -1978,6 +2456,179 @@
         document.getElementById('pausedOverlay').style.display = 'flex';
       }
     });
+
+    // Wind indicator function
+    function drawWindIndicator(ctx) {
+      // Always show wind indicator, even with 0 wind
+      const windX = CONFIG.CANVAS_WIDTH - 130;
+      const windY = 70;
+      const windWidth = 110;
+      const windHeight = 50;
+      
+      // Create gradient background
+      const gradient = ctx.createLinearGradient(windX, windY, windX, windY + windHeight);
+      gradient.addColorStop(0, 'rgba(40, 44, 52, 0.95)');
+      gradient.addColorStop(1, 'rgba(20, 24, 32, 0.95)');
+      
+      // Draw shadow
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      
+      // Draw rounded rectangle background
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      // Manual rounded rectangle
+      const radius = 8;
+      ctx.moveTo(windX + radius, windY);
+      ctx.lineTo(windX + windWidth - radius, windY);
+      ctx.quadraticCurveTo(windX + windWidth, windY, windX + windWidth, windY + radius);
+      ctx.lineTo(windX + windWidth, windY + windHeight - radius);
+      ctx.quadraticCurveTo(windX + windWidth, windY + windHeight, windX + windWidth - radius, windY + windHeight);
+      ctx.lineTo(windX + radius, windY + windHeight);
+      ctx.quadraticCurveTo(windX, windY + windHeight, windX, windY + windHeight - radius);
+      ctx.lineTo(windX, windY + radius);
+      ctx.quadraticCurveTo(windX, windY, windX + radius, windY);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Reset shadow for other elements
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      
+      // Draw border with gradient
+      const borderGradient = ctx.createLinearGradient(windX, windY, windX + windWidth, windY + windHeight);
+      borderGradient.addColorStop(0, 'rgba(100, 200, 255, 0.8)');
+      borderGradient.addColorStop(1, 'rgba(150, 100, 255, 0.8)');
+      
+      ctx.strokeStyle = borderGradient;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      // Manual rounded rectangle for border
+      ctx.moveTo(windX + radius, windY);
+      ctx.lineTo(windX + windWidth - radius, windY);
+      ctx.quadraticCurveTo(windX + windWidth, windY, windX + windWidth, windY + radius);
+      ctx.lineTo(windX + windWidth, windY + windHeight - radius);
+      ctx.quadraticCurveTo(windX + windWidth, windY + windHeight, windX + windWidth - radius, windY + windHeight);
+      ctx.lineTo(windX + radius, windY + windHeight);
+      ctx.quadraticCurveTo(windX, windY + windHeight, windX, windY + windHeight - radius);
+      ctx.lineTo(windX, windY + radius);
+      ctx.quadraticCurveTo(windX, windY, windX + radius, windY);
+      ctx.closePath();
+      ctx.stroke();
+      
+      // Draw wind icon (cloud symbol)
+      const iconX = windX + 15;
+      const iconY = windY + 15;
+      ctx.fillStyle = 'rgba(150, 200, 255, 0.9)';
+      ctx.beginPath();
+      ctx.arc(iconX, iconY, 6, 0, Math.PI * 2);
+      ctx.arc(iconX + 8, iconY, 4, 0, Math.PI * 2);
+      ctx.arc(iconX + 4, iconY - 3, 5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw wind text with better styling
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText('WIND', windX + 35, windY + 20);
+      
+      // Draw wind arrow and strength
+      const arrowX = windX + windWidth/2;
+      const arrowY = windY + 35;
+      const windStrength = Math.abs(gameState.wind);
+      const arrowLength = Math.min(windStrength * 4, 35); // Scale arrow length
+      
+      if (windStrength < 0.1) {
+        // No wind - show a calm indicator
+        ctx.fillStyle = 'rgba(100, 200, 100, 0.8)';
+        ctx.beginPath();
+        ctx.arc(arrowX, arrowY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw calm symbol (horizontal lines)
+        ctx.strokeStyle = 'rgba(100, 200, 100, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(arrowX - 8, arrowY);
+        ctx.lineTo(arrowX + 8, arrowY);
+        ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(100, 200, 100, 0.9)';
+        ctx.font = 'bold 11px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('CALM', arrowX, arrowY + 15);
+      } else {
+        // Wind present - show animated arrow
+        const time = Date.now() * 0.005;
+        const wiggle = Math.sin(time) * 2; // Subtle animation
+        
+        // Draw wind strength bar
+        const barWidth = 40;
+        const barHeight = 4;
+        const barX = arrowX - barWidth/2;
+        const barY = arrowY + 8;
+        
+        // Background bar
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Filled bar based on wind strength
+        const fillWidth = (windStrength / 10) * barWidth; // Normalize to max wind of 10
+        const barGradient = ctx.createLinearGradient(barX, barY, barX + fillWidth, barY);
+        
+        if (gameState.wind > 0) {
+          // Right wind - red to orange gradient
+          barGradient.addColorStop(0, '#ff6b6b');
+          barGradient.addColorStop(1, '#ffa500');
+        } else {
+          // Left wind - blue to cyan gradient
+          barGradient.addColorStop(0, '#6b6bff');
+          barGradient.addColorStop(1, '#00ffff');
+        }
+        
+        ctx.fillStyle = barGradient;
+        ctx.fillRect(barX, barY, fillWidth, barHeight);
+        
+        // Draw animated arrow
+        ctx.strokeStyle = gameState.wind > 0 ? '#ff6b6b' : '#6b6bff';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        
+        if (gameState.wind > 0) {
+          // Wind blowing right with animation
+          ctx.moveTo(arrowX - arrowLength/2, arrowY + wiggle);
+          ctx.lineTo(arrowX + arrowLength/2, arrowY + wiggle);
+          ctx.lineTo(arrowX + arrowLength/2 - 6, arrowY + wiggle - 4);
+          ctx.moveTo(arrowX + arrowLength/2, arrowY + wiggle);
+          ctx.lineTo(arrowX + arrowLength/2 - 6, arrowY + wiggle + 4);
+        } else {
+          // Wind blowing left with animation
+          ctx.moveTo(arrowX + arrowLength/2, arrowY + wiggle);
+          ctx.lineTo(arrowX - arrowLength/2, arrowY + wiggle);
+          ctx.lineTo(arrowX - arrowLength/2 + 6, arrowY + wiggle - 4);
+          ctx.moveTo(arrowX - arrowLength/2, arrowY + wiggle);
+          ctx.lineTo(arrowX - arrowLength/2 + 6, arrowY + wiggle + 4);
+        }
+        ctx.stroke();
+        
+        // Draw wind strength text with better styling
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${windStrength.toFixed(1)}`, arrowX, arrowY + 25);
+        
+        // Draw wind direction text
+        ctx.fillStyle = gameState.wind > 0 ? '#ff6b6b' : '#6b6bff';
+        ctx.font = '10px Arial';
+        ctx.fillText(gameState.wind > 0 ? '→ EAST' : '← WEST', arrowX, arrowY + 38);
+      }
+    }
   </script>
 </body>
 </html>
