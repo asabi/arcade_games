@@ -44,6 +44,8 @@
       display: grid;
       place-items: center;
       background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+      padding: 20px;
+      box-sizing: border-box;
     }
 
     canvas {
@@ -53,6 +55,9 @@
       box-shadow: 
         0 0 30px rgba(0, 255, 255, 0.4),
         inset 0 0 20px rgba(0, 255, 255, 0.1);
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
     }
 
     .overlay {
@@ -98,10 +103,10 @@
     }
 
     .subtitle {
-      color: var(--text-light);
+      font-size: 1.5rem;
       margin-bottom: 30px;
-      font-size: 1.3rem;
-      opacity: 0.9;
+      color: var(--neon-green);
+      text-shadow: 0 0 20px rgba(0, 255, 65, 0.6);
     }
 
     .game-options {
@@ -573,6 +578,80 @@
     .hidden {
       display: none !important;
     }
+
+    .game-over-overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(10, 10, 10, 0.95);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+    }
+
+    /* Responsive design for different screen sizes */
+    @media (max-width: 768px) {
+      .title {
+        font-size: 2.5rem;
+      }
+      
+      .subtitle {
+        font-size: 1.2rem;
+      }
+      
+      .menu-card {
+        padding: 30px 20px;
+        margin: 20px;
+      }
+      
+      .btn {
+        padding: 12px 24px;
+        font-size: 1rem;
+      }
+      
+      .hud {
+        top: 10px;
+        left: 10px;
+        right: 10px;
+      }
+      
+      .player-panel {
+        padding: 10px 15px;
+        min-width: 150px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .title {
+        font-size: 2rem;
+      }
+      
+      .subtitle {
+        font-size: 1rem;
+      }
+      
+      .menu-card {
+        padding: 25px 15px;
+        margin: 15px;
+      }
+      
+      .btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+      }
+      
+      .hud {
+        top: 5px;
+        left: 5px;
+        right: 5px;
+      }
+      
+      .player-panel {
+        padding: 8px 12px;
+        min-width: 120px;
+        font-size: 0.8rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -918,6 +997,9 @@
         this.aiTarget = null;
         this.aiThinkTimer = 0;
         this.aiAction = 'aiming';
+        
+        // Shot trail tracking for smoke effect
+        this.lastShotTrail = [];
         
         // Debug tank creation
         const playerType = isPlayer ? "HUMAN" : "AI";
@@ -1348,6 +1430,9 @@
         const bulletVx = Math.cos(this.turretAngle) * velocity;
         const bulletVy = Math.sin(this.turretAngle) * velocity;
         
+        // Record shot trajectory for smoke trail
+        this.recordShotTrail(bulletX, bulletY, bulletVx, bulletVy);
+        
         gameState.bullets.push(new Bullet(bulletX, bulletY, bulletVx, bulletVy, this));
         
         // Muzzle flash effect
@@ -1483,50 +1568,143 @@
         
         // Draw aiming indicators for current player (human or AI)
         if (gameState.currentPlayer === this.playerIndex && gameState.turnPhase === 'aiming') {
-          // Draw trajectory preview
-          this.drawTrajectoryPreview(ctx);
-          
           // Draw power indicator
           this.drawPowerIndicator(ctx);
-          
-          // Draw shooting angle range indicator
-          this.drawShootingAngleRange(ctx);
         }
+        
+        // Always draw previous shot trail (smoke effect) if available
+        this.drawPreviousShotTrail(ctx);
       }
       
-      drawTrajectoryPreview(ctx) {
+      drawPowerIndicator(ctx) {
+        // Power bar above tank
+        const barWidth = 60;
+        const barHeight = 8;
+        const barX = this.x - barWidth / 2;
+        const barY = this.y - CONFIG.TANK_SIZE / 2 - 25;
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        const powerPercent = this.power / 100;
+        ctx.fillStyle = powerPercent < 0.3 ? '#00ff00' : powerPercent < 0.7 ? '#ffff00' : '#ff0000';
+        ctx.fillRect(barX, barY, barWidth * powerPercent, barHeight);
+        
+        // Power text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${this.power}%`, this.x, barY - 5);
+      }
+      
+      drawPreviousShotTrail(ctx) {
+        // Draw a faint trail of the previous shot as smoke/dust
+        if (!this.lastShotTrail || this.lastShotTrail.length < 2) return;
+        
+        // Calculate time-based fade (trail fades over 10 seconds)
+        const timeSinceShot = Date.now() - this.lastFired;
+        const fadeTime = 10000; // 10 seconds
+        const fadeFactor = Math.max(0, 1 - (timeSinceShot / fadeTime));
+        
+        if (fadeFactor <= 0) return; // Don't draw if completely faded
+        
         ctx.save();
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.translate(this.x, this.y);
         
-        // Calculate trajectory points
-        const velocity = (this.power / 100) * CONFIG.BULLET_SPEED;
-        let x = this.x + Math.cos(this.turretAngle) * (CONFIG.TANK_SIZE / 2 + 8);
-        let y = this.y + Math.sin(this.turretAngle) * (CONFIG.TANK_SIZE / 2 + 8);
-        let vx = Math.cos(this.turretAngle) * velocity;
-        let vy = Math.sin(this.turretAngle) * velocity;
+        // Draw smoke trail with full arc visibility and proper fade from start to end
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         
+        // Draw the full arc with fading opacity from start to end
         ctx.beginPath();
-        ctx.moveTo(x, y);
+        ctx.moveTo(this.lastShotTrail[0].x - this.x, this.lastShotTrail[0].y - this.y);
         
-        // Simulate trajectory for preview
-        for (let i = 0; i < 100; i++) {
-          vy += CONFIG.GRAVITY;
-          vx += gameState.wind * 0.01;
-          x += vx;
-          y += vy;
+        for (let i = 1; i < this.lastShotTrail.length; i++) {
+          const point = this.lastShotTrail[i];
+          // Fade from start (opacity 1) to end (opacity 0.1) for a natural trail effect
+          const fadeProgress = i / (this.lastShotTrail.length - 1);
+          const opacity = (1 - fadeProgress * 0.9) * fadeFactor * 0.6; // Start at 60% opacity, fade to 6%
+          ctx.strokeStyle = `rgba(120, 120, 120, ${opacity})`;
+          ctx.lineWidth = 6 - (fadeProgress * 3); // Line also gets thinner towards the end
+          ctx.lineTo(point.x - this.x, point.y - this.y);
+        }
+        ctx.stroke();
+        
+        // Add subtle smoke particles along the trail for better visibility
+        for (let i = 0; i < this.lastShotTrail.length; i += 2) { // Every other point to avoid too many particles
+          const point = this.lastShotTrail[i];
+          const fadeProgress = i / (this.lastShotTrail.length - 1);
+          const opacity = (1 - fadeProgress * 0.8) * fadeFactor * 0.4; // Particles also fade
           
-          if (i % 3 === 0) ctx.lineTo(x, y); // Every few steps for smoother line
+          if (opacity > 0.05) { // Only draw if visible enough
+            ctx.fillStyle = `rgba(100, 100, 100, ${opacity})`;
+            
+            // Add slow, gentle animation to reduce shakiness while keeping it alive
+            const time = Date.now() * 0.001; // Slow time factor
+            const offsetX = Math.sin(point.x * 0.1 + time * 0.5) * 6; // Gentle movement
+            const offsetY = Math.cos(point.y * 0.1 + time * 0.3) * 6; // Different speed for variety
+            const size = 2 + Math.sin(point.x * 0.05 + time * 0.2) * 1.5; // Subtle size variation
+            
+            ctx.beginPath();
+            ctx.arc(point.x - this.x + offsetX, point.y - this.y + offsetY, size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        
+        ctx.restore();
+      }
+      
+      recordShotTrail(startX, startY, vx, vy) {
+        // Calculate trajectory points for smoke trail
+        this.lastShotTrail = [];
+        let x = startX;
+        let y = startY;
+        let currentVx = vx;
+        let currentVy = vy;
+        
+        // Simulate bullet trajectory for trail (more points for better visibility)
+        for (let i = 0; i < 40; i++) {
+          this.lastShotTrail.push({ x: x, y: y });
+          
+          // Apply physics
+          currentVy += CONFIG.GRAVITY;
+          currentVx += gameState.wind * 0.01;
+          
+          x += currentVx;
+          y += currentVy;
           
           // Stop if hitting terrain or going off screen
           if (y >= getTerrainHeight(x) || x < 0 || x > CONFIG.CANVAS_WIDTH || y > CONFIG.CANVAS_HEIGHT) {
             break;
           }
         }
+      }
+      
+      updateShotTrailToPoint(impactX, impactY) {
+        // Update the shot trail to stop at the actual impact point
+        if (!this.lastShotTrail || this.lastShotTrail.length < 2) return;
         
-        ctx.stroke();
-        ctx.restore();
+        // Find the closest point in the trail to the impact point
+        let closestIndex = 0;
+        let closestDistance = Infinity;
+        
+        for (let i = 0; i < this.lastShotTrail.length; i++) {
+          const point = this.lastShotTrail[i];
+          const distance = Math.hypot(point.x - impactX, point.y - impactY);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = i;
+          }
+        }
+        
+        // Truncate the trail to the impact point
+        this.lastShotTrail = this.lastShotTrail.slice(0, closestIndex + 1);
+        
+        // Add the exact impact point if it's not already there
+        if (closestDistance > 5) { // If the closest point is more than 5 pixels away
+          this.lastShotTrail.push({ x: impactX, y: impactY });
+        }
       }
       
       renderParachute(ctx) {
@@ -1583,76 +1761,6 @@
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      
-      drawPowerIndicator(ctx) {
-        // Power bar above tank
-        const barWidth = 60;
-        const barHeight = 8;
-        const barX = this.x - barWidth / 2;
-        const barY = this.y - CONFIG.TANK_SIZE / 2 - 25;
-        
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        const powerPercent = this.power / 100;
-        ctx.fillStyle = powerPercent < 0.3 ? '#00ff00' : powerPercent < 0.7 ? '#ffff00' : '#ff0000';
-        ctx.fillRect(barX, barY, barWidth * powerPercent, barHeight);
-        
-        // Power text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${this.power}%`, this.x, barY - 5);
-      }
-      
-      drawShootingAngleRange(ctx) {
-        // Draw shooting angle range indicator
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        
-        // Draw the available shooting angle range
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        
-        // Draw left boundary (minimum angle - left direction)
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        const leftAngle = -Math.PI/2 - Math.PI/2.4; // 75 degrees left of straight up
-        const leftX = Math.cos(leftAngle) * 60;
-        const leftY = Math.sin(leftAngle) * 60;
-        ctx.lineTo(leftX, leftY);
-        ctx.stroke();
-        
-        // Draw right boundary (maximum angle - right direction)
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        const rightAngle = -Math.PI/2 + Math.PI/2.4; // 75 degrees right of straight up
-        const rightX = Math.cos(rightAngle) * 60;
-        const rightY = Math.sin(rightAngle) * 60;
-        ctx.lineTo(rightX, rightY);
-        ctx.stroke();
-        
-        // Draw arc showing the range
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.arc(0, 0, 60, leftAngle, rightAngle);
-        ctx.stroke();
-        
-        // Draw current aim line
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        const currentX = Math.cos(this.turretAngle) * 60;
-        const currentY = Math.sin(this.turretAngle) * 60;
-        ctx.lineTo(currentX, currentY);
-        ctx.stroke();
-        
-        ctx.restore();
-      }
     }
 
     class Bullet {
@@ -1663,17 +1771,13 @@
         this.vy = vy;
         this.owner = owner;
         this.alive = true;
-        this.trail = [];
+        // No more trail array - trail is recorded once when fired
       }
 
       update() {
         if (!this.alive) return;
 
-        // Add to trail
-        this.trail.push({ x: this.x, y: this.y });
-        if (this.trail.length > 5) {
-          this.trail.shift();
-        }
+        // No more continuous trail updating - trail is recorded once when fired
 
         // Apply artillery physics
         this.vy += CONFIG.GRAVITY; // Full gravity for realistic ballistics
@@ -1709,7 +1813,8 @@
           if (tank === this.owner || !tank.alive) continue;
           
           const distance = Math.hypot(tank.x - this.x, tank.y - this.y);
-          if (distance < CONFIG.TANK_SIZE / 2) {
+          // Increased collision radius for better hit detection (was TANK_SIZE/2, now TANK_SIZE)
+          if (distance < CONFIG.TANK_SIZE) {
             tank.takeDamage(CONFIG.DAMAGE_PER_HIT);
             if (!tank.alive) {
               this.owner.kills++;
@@ -1723,6 +1828,12 @@
       explode() {
         console.log(`Bullet exploding at (${this.x}, ${this.y})`);
         this.alive = false;
+        
+        // Update the owner's shot trail to stop at the actual impact point
+        if (this.owner && this.owner.updateShotTrailToPoint) {
+          this.owner.updateShotTrailToPoint(this.x, this.y);
+        }
+        
         createExplosion(this.x, this.y, CONFIG.EXPLOSION_SIZE / 2);
         console.log(`Calling destroyTerrain with radius ${CONFIG.TERRAIN_DESTRUCTION_RADIUS}`);
         destroyTerrain(this.x, this.y, CONFIG.TERRAIN_DESTRUCTION_RADIUS);
@@ -1732,21 +1843,7 @@
       render(ctx) {
         if (!this.alive) return;
 
-        // Draw trail
-        ctx.strokeStyle = CONFIG.COLORS.bullet;
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.5;
-        
-        if (this.trail.length > 1) {
-          ctx.beginPath();
-          ctx.moveTo(this.trail[0].x, this.trail[0].y);
-          for (let i = 1; i < this.trail.length; i++) {
-            ctx.lineTo(this.trail[i].x, this.trail[i].y);
-          }
-          ctx.stroke();
-        }
-        
-        ctx.globalAlpha = 1;
+        // No more live trail rendering - only the smoke trail from lastShotTrail
 
         // Draw bullet
         ctx.fillStyle = CONFIG.COLORS.bullet;
@@ -1841,6 +1938,40 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
+
+    // Responsive canvas sizing
+    function resizeCanvas() {
+      const container = document.getElementById('gameContainer');
+      const containerRect = container.getBoundingClientRect();
+      
+      // Calculate optimal canvas size based on container
+      const maxWidth = Math.min(window.innerWidth * 0.95, 1200);
+      const maxHeight = Math.min(window.innerHeight * 0.8, 800);
+      
+      // Maintain aspect ratio
+      const aspectRatio = CONFIG.CANVAS_WIDTH / CONFIG.CANVAS_HEIGHT;
+      let newWidth = maxWidth;
+      let newHeight = maxWidth / aspectRatio;
+      
+      if (newHeight > maxHeight) {
+        newHeight = maxHeight;
+        newWidth = maxHeight * aspectRatio;
+      }
+      
+      // Set canvas size
+      canvas.style.width = newWidth + 'px';
+      canvas.style.height = newHeight + 'px';
+      
+      // Set actual canvas dimensions (for rendering)
+      canvas.width = CONFIG.CANVAS_WIDTH;
+      canvas.height = CONFIG.CANVAS_HEIGHT;
+      
+      console.log(`🖥️ Canvas resized: ${newWidth}x${newHeight} (render: ${CONFIG.CANVAS_WIDTH}x${CONFIG.CANVAS_HEIGHT})`);
+    }
+
+    // Initialize responsive canvas
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
 
     // Terrain generation
     function generateTerrain() {
