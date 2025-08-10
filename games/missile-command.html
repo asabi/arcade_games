@@ -261,6 +261,19 @@
       transform: translateY(-2px) scale(1.02);
     }
 
+    #gameCanvas {
+      border: 2px solid var(--base-cyan);
+      border-radius: 10px;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+      cursor: crosshair;
+      outline: none;
+    }
+
+    #gameCanvas:focus {
+      border-color: var(--city-green);
+      box-shadow: 0 0 40px rgba(0, 255, 65, 0.5);
+    }
+
     .controls-info {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1085,7 +1098,7 @@
   <body>    
     <div id="gameContainer">
     
-    <canvas id="gameCanvas" width="1000" height="700"></canvas>
+    <canvas id="gameCanvas" width="1000" height="700" tabindex="0"></canvas>
     <div class="hud" id="hud" style="display: none;">
       <div class="hud-panel">
         <div class="hud-item">
@@ -1205,7 +1218,6 @@
   </div>
 
   <script>
-    // Game configuration
     // Game configuration with balanced difficulty progression
     // - Initial missile speed: 1.2 (reduced from 2.0 for easier start)
     // - Initial missiles per wave: 4 (reduced from 8 for easier start)
@@ -1215,14 +1227,14 @@
       CANVAS_WIDTH: 1000,
       CANVAS_HEIGHT: 700,
       CITY_SIZE: 15,
-      MISSILE_SPEED: 1.2,
+      MISSILE_SPEED: 0.8, // Reduced from 1.2 for slower initial speed
       EXPLOSION_RADIUS: 60,
       EXPLOSION_DURATION: 30,
       SMART_BOMB_RADIUS: 200,
       INITIAL_CITIES: 6,
       INITIAL_SMART_BOMBS: 3,
-      MISSILES_PER_WAVE: 4,
-      WAVE_DELAY: 3000,
+      MISSILES_PER_WAVE: 3, // Reduced from 4 for easier start
+      WAVE_DELAY: 5000, // Increased from 3000 for longer delay between waves
       COLORS: {
         city: '#00ff41',
         missile: '#ff0040',
@@ -1251,8 +1263,11 @@
       pausePressed: false,
       fullscreenPressed: false,
       restartPressed: false,
+      smartBombPressed: false,
       waveTimer: 0,
       missileSpawnTimer: 0,
+      missilesSpawned: 0,
+      missilesPerWave: CONFIG.MISSILES_PER_WAVE,
       cityPositions: [],
       basePositions: [],
       timeAttackTimer: 300, // 5 minutes for time attack mode
@@ -1278,9 +1293,11 @@
       setupEventListeners() {
         // Keyboard events
         document.addEventListener('keydown', (e) => {
+          console.log('Key pressed:', e.code);
           this.keys.add(e.code);
           if (['Space', 'KeyP', 'KeyF', 'KeyR'].includes(e.code)) {
             e.preventDefault();
+            console.log('Prevented default for:', e.code);
           }
         });
 
@@ -1298,9 +1315,20 @@
 
         canvas.addEventListener('mousedown', (e) => {
           this.mousePressed = true;
+          // Focus canvas to receive keyboard events
+          canvas.focus();
           if (e.button === 0) { // Left click
             fireAtPosition(this.mouseX, this.mouseY);
           }
+        });
+
+        // Ensure canvas is focused when game starts
+        canvas.addEventListener('focus', () => {
+          console.log('Canvas focused - keyboard events should work now');
+        });
+
+        canvas.addEventListener('blur', () => {
+          console.log('Canvas lost focus');
         });
 
         canvas.addEventListener('mouseup', () => {
@@ -1352,7 +1380,12 @@
       }
 
       isSmartBombPressed() {
-        return this.keys.has('Space') || this.touchActions.has('smart-bomb');
+        const spacePressed = this.keys.has('Space');
+        const touchPressed = this.touchActions.has('smart-bomb');
+        if (spacePressed) {
+          console.log('Space key detected for smart bomb');
+        }
+        return spacePressed || touchPressed;
       }
     }
 
@@ -1506,15 +1539,15 @@
         this.particles = [];
         
         // Create explosion particles
-        for (let i = 0; i < 20; i++) {
-          const angle = (Math.PI * 2 * i) / 20;
-          const speed = 2 + Math.random() * 3;
+        for (let i = 0; i < 35; i++) { // Increased from 20 to 35 particles
+          const angle = (Math.PI * 2 * i) / 35;
+          const speed = 3 + Math.random() * 5; // Increased speed range
           this.particles.push({
             x: this.x,
             y: this.y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            life: duration + Math.random() * 20
+            life: duration + Math.random() * 30 // Increased random life variation
           });
         }
       }
@@ -1589,16 +1622,19 @@
         const alpha = this.lifetime / this.maxLifetime;
         ctx.globalAlpha = alpha;
         ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 5;
         ctx.beginPath();
         ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
       }
     }
 
-    // Initialize game systems
-    const input = new InputManager();
-    const audio = new AudioManager();
+    // Initialize game systems (will be done after functions are defined)
+    let input;
+    let audio;
 
     // Canvas setup
     const canvas = document.getElementById('gameCanvas');
@@ -1634,7 +1670,7 @@
       for (let i = 1; i <= CONFIG.INITIAL_CITIES; i++) {
         gameState.cityPositions.push({
           x: citySpacing * i,
-          y: CONFIG.CANVAS_HEIGHT - 50,
+          y: CONFIG.CANVAS_HEIGHT - 75, // Adjusted for new building height
           destroyed: false
         });
       }
@@ -1645,14 +1681,18 @@
       for (let i = 1; i <= 3; i++) {
         gameState.basePositions.push({
           x: baseSpacing * i,
-          y: CONFIG.CANVAS_HEIGHT - 30,
+          y: CONFIG.CANVAS_HEIGHT - 75, // Adjusted for new building height
           destroyed: false
         });
       }
     }
 
     function spawnMissile() {
-      if (gameState.missiles.length >= CONFIG.MISSILES_PER_WAVE + Math.floor(gameState.wave / 2)) return;
+      // Don't spawn if we've already spawned the full wave
+      if (gameState.missilesSpawned >= gameState.missilesPerWave) return;
+      
+      // Don't spawn if we have too many active missiles
+      if (gameState.missiles.length >= gameState.missilesPerWave + Math.floor(gameState.wave / 2)) return;
 
       // Choose a random target (city or base)
       const targets = [...gameState.cityPositions, ...gameState.basePositions].filter(t => !t.destroyed);
@@ -1663,13 +1703,14 @@
       const startY = 0;
 
       // Create missile with difficulty-based speed
-      const difficultyMultiplier = 1 + (gameState.wave - 1) * 0.05; // 5% speed increase per wave
+      const difficultyMultiplier = 1 + (gameState.wave - 1) * 0.03; // 3% speed increase per wave (reduced from 5%)
       const missile = new Missile(startX, startY, target.x, target.y);
       missile.speed = CONFIG.MISSILE_SPEED * difficultyMultiplier;
       missile.vx = Math.cos(missile.angle) * missile.speed;
       missile.vy = Math.sin(missile.angle) * missile.speed;
 
       gameState.missiles.push(missile);
+      gameState.missilesSpawned++;
     }
 
     function fireAtPosition(x, y) {
@@ -1693,7 +1734,9 @@
           createExplosionParticles(missile.x, missile.y, CONFIG.COLORS.missile);
           
           hit = true;
-          audio.playMissileHit();
+          if (audio && audio.playMissileHit) {
+            audio.playMissileHit();
+          }
         }
       }
 
@@ -1717,7 +1760,9 @@
           activateRapidFire();
         }
         
-        audio.playFire();
+        if (audio && audio.playFire) {
+          audio.playFire();
+        }
       }
     }
 
@@ -1728,9 +1773,15 @@
     }
 
     function useSmartBomb() {
-      if (gameState.smartBombs <= 0) return;
+      console.log('Smart bomb triggered! Smart bombs remaining:', gameState.smartBombs);
+      
+      if (gameState.smartBombs <= 0) {
+        console.log('No smart bombs remaining');
+        return;
+      }
 
       gameState.smartBombs--;
+      console.log('Smart bomb used. Remaining:', gameState.smartBombs);
       
       // Destroy all missiles on screen
       let missilesDestroyed = 0;
@@ -1754,23 +1805,62 @@
       const points = missilesDestroyed * 50 * gameState.wave;
       gameState.score += points;
       
-      audio.playSmartBomb();
+      console.log(`Smart bomb destroyed ${missilesDestroyed} missiles for ${points} points`);
+      
+      if (audio && audio.playSmartBomb) {
+        audio.playSmartBomb();
+      } else {
+        console.log('Audio not available for smart bomb sound');
+      }
       showScorePopup(CONFIG.CANVAS_WIDTH / 2, CONFIG.CANVAS_HEIGHT / 2, points);
       
       updateHUD();
     }
 
     function createExplosionParticles(x, y, color) {
-      for (let i = 0; i < 15; i++) {
-        const angle = (Math.PI * 2 * i) / 15;
-        const speed = 3 + Math.random() * 4;
+      for (let i = 0; i < 25; i++) { // Increased from 15 to 25 particles
+        const angle = (Math.PI * 2 * i) / 25;
+        const speed = 4 + Math.random() * 6; // Increased speed range
         gameState.particles.push(new Particle(
-          x + Math.cos(angle) * 10,
-          y + Math.sin(angle) * 10,
+          x + Math.cos(angle) * 15, // Increased spread
+          y + Math.sin(angle) * 15,
           Math.cos(angle) * speed,
           Math.sin(angle) * speed,
           color,
-          30 + Math.random() * 20
+          40 + Math.random() * 30 // Increased lifetime
+        ));
+      }
+    }
+
+    function createBuildingDestructionEffect(x, y) {
+      // Create debris particles
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 4;
+        const size = 1 + Math.random() * 3;
+        
+        gameState.particles.push(new Particle(
+          x + (Math.random() - 0.5) * 20,
+          y + (Math.random() - 0.5) * 20,
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed,
+          '#8B4513', // Brown debris color
+          60 + Math.random() * 40
+        ));
+      }
+      
+      // Create smoke particles
+      for (let i = 0; i < 15; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 3;
+        
+        gameState.particles.push(new Particle(
+          x + (Math.random() - 0.5) * 15,
+          y + (Math.random() - 0.5) * 15,
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed - 1, // Smoke rises
+          '#696969', // Gray smoke color
+          80 + Math.random() * 60
         ));
       }
     }
@@ -1814,12 +1904,19 @@
 
     function updateHUD() {
       // Update HUD display elements
-      document.getElementById('scoreDisplay').textContent = gameState.score;
-      document.getElementById('waveDisplay').textContent = gameState.wave;
-      document.getElementById('citiesDisplay').textContent = gameState.cities;
-      document.getElementById('highScoreDisplay').textContent = gameState.highScore;
-      document.getElementById('missilesDisplay').textContent = gameState.missiles.length;
-      document.getElementById('smartBombsDisplay').textContent = gameState.smartBombs;
+      const scoreDisplay = document.getElementById('scoreDisplay');
+      const waveDisplay = document.getElementById('waveDisplay');
+      const citiesDisplay = document.getElementById('citiesDisplay');
+      const highScoreDisplay = document.getElementById('highScoreDisplay');
+      const missilesDisplay = document.getElementById('missilesDisplay');
+      const smartBombsDisplay = document.getElementById('smartBombsDisplay');
+      
+      if (scoreDisplay) scoreDisplay.textContent = gameState.score;
+      if (waveDisplay) waveDisplay.textContent = gameState.wave;
+      if (citiesDisplay) citiesDisplay.textContent = gameState.cities;
+      if (highScoreDisplay) highScoreDisplay.textContent = gameState.highScore;
+      if (missilesDisplay) missilesDisplay.textContent = gameState.missiles.length;
+      if (smartBombsDisplay) smartBombsDisplay.textContent = gameState.smartBombs;
       
       // Show time attack timer if in time attack mode
       if (gameState.mode === 'time-attack') {
@@ -1842,6 +1939,15 @@
 
     function updateGame() {
       if (!gameState.running || gameState.paused) return;
+      
+      // Ensure input and audio managers are ready
+      if (!input || !audio) {
+        console.warn('Input or audio manager not ready in updateGame, skipping update');
+        return;
+      }
+
+      // Handle input (including smart bomb)
+      handleInput();
 
       // Update wave timer
       if (gameState.waveTimer > 0) {
@@ -1880,7 +1986,7 @@
         gameState.missileSpawnTimer--;
       } else {
         spawnMissile();
-        gameState.missileSpawnTimer = 120 + Math.random() * 180; // More generous random spawn interval
+        gameState.missileSpawnTimer = 200 + Math.random() * 300; // More generous random spawn interval (was 120 + random 180)
       }
 
       // Update entities
@@ -1891,8 +1997,8 @@
       // Check missile impacts
       checkMissileImpacts();
 
-      // Check wave completion
-      if (gameState.missiles.length === 0 && gameState.waveTimer === 0) {
+      // Check wave completion - only complete when all missiles are destroyed and we've spawned the full wave
+      if (gameState.missiles.length === 0 && gameState.missilesSpawned >= gameState.missilesPerWave) {
         nextWave();
       }
 
@@ -1907,7 +2013,7 @@
         gameState.cityPositions.forEach(city => {
           if (!city.destroyed) {
             const distance = Math.hypot(missile.x - city.x, missile.y - city.y);
-            if (distance < CONFIG.CITY_SIZE) {
+            if (distance < CONFIG.CITY_SIZE * 1.8) { // Adjusted for new building width
               city.destroyed = true;
               gameState.cities--;
               gameState.missiles.splice(i, 1);
@@ -1916,7 +2022,12 @@
               gameState.explosions.push(new Explosion(city.x, city.y, CONFIG.EXPLOSION_RADIUS, CONFIG.EXPLOSION_DURATION));
               createExplosionParticles(city.x, city.y, CONFIG.COLORS.city);
               
-              audio.playCityDestroyed();
+              // Create building destruction effect
+              createBuildingDestructionEffect(city.x, city.y);
+              
+              if (audio && audio.playCityDestroyed) {
+                audio.playCityDestroyed();
+              }
               
               if (gameState.cities <= 0) {
                 checkGameOver();
@@ -1930,7 +2041,7 @@
         gameState.basePositions.forEach(base => {
           if (!base.destroyed) {
             const distance = Math.hypot(missile.x - base.x, missile.y - base.y);
-            if (distance < CONFIG.CITY_SIZE) {
+            if (distance < CONFIG.CITY_SIZE * 1.8) { // Adjusted for new building width
               base.destroyed = true;
               gameState.missiles.splice(i, 1);
               
@@ -1938,7 +2049,12 @@
               gameState.explosions.push(new Explosion(base.x, base.y, CONFIG.EXPLOSION_RADIUS, CONFIG.EXPLOSION_DURATION));
               createExplosionParticles(base.x, base.y, CONFIG.COLORS.base);
               
-              audio.playCityDestroyed();
+              // Create building destruction effect
+              createBuildingDestructionEffect(base.x, base.y);
+              
+              if (audio && audio.playCityDestroyed) {
+                audio.playCityDestroyed();
+              }
               return;
             }
           }
@@ -1954,13 +2070,17 @@
       gameState.score += waveBonus;
       
       // Show wave completion message
-      showWaveMessage(`WAVE ${gameState.wave - 1} COMPLETE!`);
+      showWaveMessage(`WAVE ${gameState.wave - 1} COMPLETE! +${waveBonus} POINTS`);
       
       // Set wave timer
-      gameState.waveTimer = 180; // 3 seconds
+      gameState.waveTimer = 300; // 5 seconds (increased from 3)
       
-      // Reset missile spawn timer
+      // Reset missile spawn timer and counter
       gameState.missileSpawnTimer = 0;
+      gameState.missilesSpawned = 0;
+      
+      // Increase missiles per wave as difficulty increases
+      gameState.missilesPerWave = CONFIG.MISSILES_PER_WAVE + Math.floor((gameState.wave - 1) / 2);
       
       // Add smart bomb every 3 waves
       if (gameState.wave % 3 === 0) {
@@ -1988,23 +2108,26 @@
     function showWaveMessage(message) {
       const messageDiv = document.createElement('div');
       messageDiv.style.cssText = `
-        position: fixed;
+        position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
         font-family: 'Orbitron', monospace;
-        font-size: 3rem;
+        font-size: 2.5rem;
         font-weight: 900;
         color: #00ff41;
         text-shadow: 0 0 40px rgba(0, 255, 65, 0.8);
         background: rgba(0, 0, 17, 0.9);
         border: 3px solid #00ff41;
         border-radius: 20px;
-        padding: 30px 60px;
+        padding: 25px 50px;
         z-index: 1000;
         pointer-events: none;
         backdrop-filter: blur(10px);
-        animation: wave-message 2s ease-in-out forwards;
+        animation: wave-message 3s ease-in-out forwards, wave-message-glow 1s ease-in-out infinite;
+        max-width: 90vw;
+        text-align: center;
+        word-wrap: break-word;
       `;
       messageDiv.textContent = message;
       
@@ -2015,21 +2138,26 @@
         style.textContent = `
           @keyframes wave-message {
             0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-            25% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
-            75% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+          }
+          
+          @keyframes wave-message-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 65, 0.6); }
+            50% { box-shadow: 0 0 40px rgba(0, 255, 65, 0.9); }
           }
         `;
         document.head.appendChild(style);
       }
       
-      document.body.appendChild(messageDiv);
+      document.getElementById('gameContainer').appendChild(messageDiv);
       
       setTimeout(() => {
         if (messageDiv.parentNode) {
           messageDiv.parentNode.removeChild(messageDiv);
         }
-      }, 2000);
+      }, 3000);
     }
 
     function checkGameOver() {
@@ -2040,6 +2168,12 @@
 
     function handleInput() {
       if (!gameState.running) return;
+      
+      // Ensure input manager is available
+      if (!input) {
+        console.warn('Input manager not initialized yet');
+        return;
+      }
 
       // Check pause
       if (input.isPausePressed() && !gameState.pausePressed) {
@@ -2068,6 +2202,7 @@
 
       // Check smart bomb
       if (input.isSmartBombPressed() && !gameState.smartBombPressed) {
+        console.log('Smart bomb input detected, calling useSmartBomb()');
         useSmartBomb();
         gameState.smartBombPressed = true;
       } else if (!input.isSmartBombPressed()) {
@@ -2077,6 +2212,20 @@
 
     // Game loop
     function gameLoop() {
+      // Ensure input and audio managers are ready
+      if (!input || !audio) {
+        console.warn('Input or audio manager not ready in game loop, waiting...');
+        setTimeout(() => {
+          if (input && audio) {
+            console.log('Input and audio managers now ready in game loop');
+            gameLoop();
+          } else {
+            console.error('Input or audio manager still not ready after game loop delay');
+          }
+        }, 100);
+        return;
+      }
+      
       const currentTime = performance.now();
       const deltaTime = currentTime - gameState.lastUpdateTime;
       gameState.lastUpdateTime = currentTime;
@@ -2098,6 +2247,12 @@
     }
 
     function render() {
+      // Ensure canvas context is available
+      if (!ctx) {
+        console.warn('Canvas context not available for rendering');
+        return;
+      }
+      
       ctx.clearRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
 
       // Draw background
@@ -2107,25 +2262,13 @@
       // Draw city and base positions
       gameState.cityPositions.forEach(city => {
         if (!city.destroyed) {
-          ctx.fillStyle = CONFIG.COLORS.city;
-          ctx.shadowColor = CONFIG.COLORS.city;
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(city.x, city.y, CONFIG.CITY_SIZE, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+          drawBuilding(ctx, city.x, city.y, CONFIG.COLORS.city);
         }
       });
 
       gameState.basePositions.forEach(base => {
         if (!base.destroyed) {
-          ctx.fillStyle = CONFIG.COLORS.base;
-          ctx.shadowColor = CONFIG.COLORS.base;
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(base.x, base.y, CONFIG.CITY_SIZE, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+          drawBuilding(ctx, base.x, base.y, CONFIG.COLORS.base);
         }
       });
 
@@ -2144,7 +2287,94 @@
       }
     }
 
+    function drawBuilding(ctx, x, y, color) {
+      const buildingWidth = CONFIG.CITY_SIZE * 1.8;
+      const buildingHeight = CONFIG.CITY_SIZE * 2.5;
+      
+      // Enhanced building shadow with depth
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(x - buildingWidth/2 + 4, y + 4, buildingWidth, buildingHeight);
+      
+      // Main building structure
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 15;
+      ctx.fillRect(x - buildingWidth/2, y, buildingWidth, buildingHeight);
+      
+      // Building foundation/base
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(x - buildingWidth/2 - 2, y + buildingHeight, buildingWidth + 4, 4);
+      
+      // Roof details
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(x - buildingWidth/2, y, buildingWidth, 3); // Top edge
+      
+      // Architectural lines and details
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      
+      // Vertical architectural lines
+      for (let i = 1; i < 4; i++) {
+        const lineX = x - buildingWidth/2 + (buildingWidth * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(lineX, y);
+        ctx.lineTo(lineX, y + buildingHeight);
+        ctx.stroke();
+      }
+      
+      // Horizontal floor lines
+      for (let i = 1; i < 4; i++) {
+        const lineY = y + (buildingHeight * i) / 4;
+        ctx.beginPath();
+        ctx.moveTo(x - buildingWidth/2, lineY);
+        ctx.lineTo(x + buildingWidth/2, lineY);
+        ctx.stroke();
+      }
+      
+      // Enhanced windows with frames
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 3; j++) {
+          const windowX = x - buildingWidth/2 + 6 + i * (buildingWidth - 12) / 3;
+          const windowY = y + 8 + j * (buildingHeight - 16) / 3;
+          
+          // Window frame
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+          ctx.fillRect(windowX - 1, windowY - 1, 5, 5);
+          
+          // Window glass
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.fillRect(windowX, windowY, 3, 3);
+          
+          // Window highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillRect(windowX, windowY, 1, 1);
+        }
+      }
+      
+      // Building entrance at bottom
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      const entranceWidth = buildingWidth * 0.4;
+      const entranceHeight = 6;
+      ctx.fillRect(x - entranceWidth/2, y + buildingHeight - entranceHeight, entranceWidth, entranceHeight);
+      
+      // Entrance highlight
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(x - entranceWidth/2 + 1, y + buildingHeight - entranceHeight + 1, entranceWidth - 2, 2);
+      
+      // Reset shadow
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 1;
+    }
+
     function drawCrosshair(x, y) {
+      // Ensure canvas context is available
+      if (!ctx) {
+        console.warn('Canvas context not available for crosshair');
+        return;
+      }
+      
       const size = 20;
       const thickness = 2;
       
@@ -2175,16 +2405,36 @@
     }
 
     function startGame() {
+      // Ensure input manager is ready
+      if (!input) {
+        console.error('Input manager not initialized. Cannot start game.');
+        return;
+      }
+      
       gameState.running = true;
       gameState.paused = false;
       gameState.gameLoopRunning = true;
       document.getElementById('menuOverlay').style.display = 'none';
       document.getElementById('hud').style.display = 'flex';
+      
+      // Focus canvas to ensure keyboard events work
+      const canvas = document.getElementById('gameCanvas');
+      if (canvas) {
+        canvas.focus();
+        console.log('Canvas focused on game start');
+      }
+      
       initializeGame();
       gameLoop();
     }
 
     function restartGame() {
+      // Ensure input manager is ready
+      if (!input) {
+        console.error('Input manager not initialized. Cannot restart game.');
+        return;
+      }
+      
       // Reset game state
       gameState.running = true;
       gameState.paused = false;
@@ -2194,6 +2444,7 @@
       gameState.comboTimer = 0;
       gameState.rapidFire = false;
       gameState.rapidFireTimer = 0;
+      gameState.smartBombPressed = false;
       
       // Hide overlays
       document.getElementById('gameOverOverlay').style.display = 'none';
@@ -2213,6 +2464,12 @@
     }
 
     function showMenu() {
+      // Ensure input manager is ready
+      if (!input) {
+        console.error('Input manager not initialized. Cannot show menu.');
+        return;
+      }
+      
       gameState.running = false;
       gameState.paused = false;
       gameState.gameLoopRunning = false;
@@ -2259,6 +2516,8 @@
       // Play game over sound effect
       if (audio && audio.playGameOver) {
         audio.playGameOver();
+      } else {
+        console.log('Audio not available for game over sound');
       }
     }
 
@@ -2324,6 +2583,15 @@
     // Initialization
     function initializeUI() {
       console.log('Initializing UI...');
+      
+      // Ensure input and audio managers are ready
+      if (!input) {
+        console.warn('Input manager not ready during UI initialization');
+      }
+      if (!audio) {
+        console.warn('Audio manager not ready during UI initialization');
+      }
+      
       const menuOverlay = document.getElementById('menuOverlay');
       const hud = document.getElementById('hud');
       const pausedOverlay = document.getElementById('pausedOverlay');
@@ -2344,42 +2612,104 @@
     }
 
     // Try audio initialization, but fallback to immediate UI setup
-    audio.init().then(() => {
+    if (audio && audio.init) {
+      audio.init().then(() => {
+        initializeUI();
+      }).catch(() => {
+        // If audio fails, still show the UI
+        initializeUI();
+      });
+    } else {
+      // If audio is not available, just initialize UI
+      console.warn('Audio manager not ready for initialization');
       initializeUI();
-    }).catch(() => {
-      // If audio fails, still show the UI
-      initializeUI();
-    });
+    }
 
     // Fallback initialization after a short delay
     setTimeout(() => {
-      const menuOverlay = document.getElementById('menuOverlay');
-               if (menuOverlay && (menuOverlay.style.display === 'none' ||
-             menuOverlay.style.display === '')) {
-           console.log('Fallback initialization triggered');
-           initializeUI();
-         }
-       }, 100);
+      // Ensure input and audio managers are ready
+      if (!input || !audio) {
+        console.warn('Input or audio manager not ready on fallback, waiting...');
+        setTimeout(() => {
+          if (input && audio) {
+            console.log('Input and audio managers now ready on fallback');
+            const menuOverlay = document.getElementById('menuOverlay');
+            if (menuOverlay && (menuOverlay.style.display === 'none' ||
+              menuOverlay.style.display === '')) {
+              console.log('Fallback initialization triggered');
+              initializeUI();
+            }
+          } else {
+            console.error('Input or audio manager still not ready after fallback delay');
+          }
+        }, 200);
+      } else {
+        const menuOverlay = document.getElementById('menuOverlay');
+        if (menuOverlay && (menuOverlay.style.display === 'none' ||
+          menuOverlay.style.display === '')) {
+          console.log('Fallback initialization triggered');
+          initializeUI();
+        }
+      }
+    }, 100);
 
        // Additional fallback after page load
        window.addEventListener('load', () => {
          console.log('Window loaded, checking UI state...');
-         const menuOverlay = document.getElementById('menuOverlay');
-         if (menuOverlay && menuOverlay.style.display !== 'flex') {
-           console.log('Window load fallback - forcing menu display');
-           menuOverlay.style.display = 'flex';
+         
+         // Ensure input and audio managers are ready
+         if (!input || !audio) {
+           console.warn('Input or audio manager not ready on window load, waiting...');
+           setTimeout(() => {
+             if (input && audio) {
+               console.log('Input and audio managers now ready on window load');
+               const menuOverlay = document.getElementById('menuOverlay');
+               if (menuOverlay && menuOverlay.style.display !== 'flex') {
+                 console.log('Window load fallback - forcing menu display');
+                 menuOverlay.style.display = 'flex';
+               }
+             } else {
+               console.error('Input or audio manager still not ready after window load delay');
+             }
+           }, 200);
+         } else {
+           const menuOverlay = document.getElementById('menuOverlay');
+           if (menuOverlay && menuOverlay.style.display !== 'flex') {
+             console.log('Window load fallback - forcing menu display');
+             menuOverlay.style.display = 'flex';
+           }
          }
        });
 
     // Force menu display after everything loads
            setTimeout(() => {
          console.log('Final fallback - forcing menu display');
-         const menuOverlay = document.getElementById('menuOverlay');
-         if (menuOverlay) {
-           menuOverlay.style.display = 'flex';
-           menuOverlay.style.visibility = 'visible';
-           menuOverlay.style.opacity = '1';
-           console.log('Menu overlay forced to display');
+         
+         // Ensure input and audio managers are ready
+         if (!input || !audio) {
+           console.warn('Input or audio manager not ready on final fallback, waiting...');
+           setTimeout(() => {
+             if (input && audio) {
+               console.log('Input and audio managers now ready on final fallback');
+               const menuOverlay = document.getElementById('menuOverlay');
+               if (menuOverlay) {
+                 menuOverlay.style.display = 'flex';
+                 menuOverlay.style.visibility = 'visible';
+                 menuOverlay.style.opacity = '1';
+                 console.log('Menu overlay forced to display');
+               }
+             } else {
+               console.error('Input or audio manager still not ready after final fallback delay');
+             }
+           }, 300);
+         } else {
+           const menuOverlay = document.getElementById('menuOverlay');
+           if (menuOverlay) {
+             menuOverlay.style.display = 'flex';
+             menuOverlay.style.visibility = 'visible';
+             menuOverlay.style.opacity = '1';
+             console.log('Menu overlay forced to display');
+           }
          }
        }, 500);
 
@@ -2387,9 +2717,15 @@
     window.addEventListener('resize', () => {
       // Handle touch controls
       if (window.innerWidth < 768) {
-        document.getElementById('touchControls').style.display = 'flex';
+        const touchControls = document.getElementById('touchControls');
+        if (touchControls) {
+          touchControls.style.display = 'flex';
+        }
       } else {
-        document.getElementById('touchControls').style.display = 'none';
+        const touchControls = document.getElementById('touchControls');
+        if (touchControls) {
+          touchControls.style.display = 'none';
+        }
       }
       
       // Handle canvas resize
@@ -2400,6 +2736,12 @@
     function resizeCanvas() {
       const canvas = document.getElementById('gameCanvas');
       const container = document.getElementById('gameContainer');
+      
+      if (!canvas || !container) {
+        console.warn('Canvas or container not found for resize');
+        return;
+      }
+      
       const containerRect = container.getBoundingClientRect();
       
       // Get device pixel ratio for high DPI displays
@@ -2443,10 +2785,30 @@
     // Initial canvas resize
     resizeCanvas();
     
+    // Initialize game systems after all functions are defined
+    input = new InputManager();
+    audio = new AudioManager();
+
     // Ensure menu is visible immediately
     document.addEventListener('DOMContentLoaded', () => {
       console.log('DOM loaded, initializing UI...');
-      initializeUI();
+      
+      // Ensure input and audio managers are ready
+      if (!input || !audio) {
+        console.warn('Input or audio manager not ready, waiting...');
+        setTimeout(() => {
+          if (input && audio) {
+            console.log('Input and audio managers now ready');
+            initializeUI();
+          } else {
+            console.error('Input or audio manager still not ready after delay');
+            initializeUI(); // Try anyway
+          }
+        }, 100);
+      } else {
+        initializeUI();
+      }
+      
       console.log('Menu overlay display:', document.getElementById('menuOverlay').style.display);
     });
   </script>
